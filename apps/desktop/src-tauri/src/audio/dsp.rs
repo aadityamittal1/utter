@@ -53,6 +53,104 @@ fn resample_linear(mono: &[f32], from_hz: u32) -> Vec<f32> {
         .collect()
 }
 
+/// Incremental mono -> 16 kHz converter for live capture. Push device-rate
+/// chunks of any size; read converted samples with `take_output`/`out_len`;
+/// `finish` flushes the resampler tail.
+pub struct StreamResampler {
+    rs: Option<Async<f32>>, // None = passthrough
+    ratio: f64,
+    pending: Vec<f32>,
+    out_buf: Vec<f32>,
+    out: Vec<f32>,
+    skip: usize,
+    in_total: usize,
+}
+
+impl StreamResampler {
+    pub fn new(from_hz: u32) -> Self {
+        let ratio = TARGET_HZ as f64 / from_hz.max(1) as f64;
+        let rs = if from_hz == TARGET_HZ || from_hz == 0 {
+            None
+        } else {
+            let params = SincInterpolationParameters::new(128, WindowFunction::BlackmanHarris2);
+            Async::<f32>::new_sinc(ratio, 1.0, &params, 1024, 1, FixedAsync::Input).ok()
+        };
+        let (skip, out_buf) = match &rs {
+            Some(r) => (r.output_delay(), vec![0.0; r.output_frames_max()]),
+            None => (0, Vec::new()),
+        };
+        Self {
+            rs,
+            ratio,
+            pending: Vec::new(),
+            out_buf,
+            out: Vec::new(),
+            skip,
+            in_total: 0,
+        }
+    }
+
+    /// Converted samples so far.
+    pub fn output(&self) -> &[f32] {
+        &self.out
+    }
+
+    pub fn push(&mut self, chunk: &[f32]) {
+        self.in_total += chunk.len();
+        if self.rs.is_none() {
+            // Passthrough, or sinc construction failed (linear fallback is
+            // not incremental; pass through at 16 kHz only).
+            self.out.extend_from_slice(chunk);
+            return;
+        }
+        self.pending.extend_from_slice(chunk);
+        self.drain(false);
+    }
+
+    fn drain(&mut self, _flush: bool) {
+        let Some(rs) = self.rs.as_mut() else { return };
+        loop {
+            let need = rs.input_frames_next();
+            if self.pending.len() < need {
+                break;
+            }
+            let (Ok(inp), Ok(mut outp)) = (
+                InterleavedSlice::new(&self.pending[..need], 1, need),
+                InterleavedSlice::new_mut(&mut self.out_buf[..], 1, rs.output_frames_max()),
+            ) else {
+                break;
+            };
+            let Ok((nin, nout)) = rs.process_into_buffer(&inp, &mut outp, None) else {
+                break;
+            };
+            self.pending.drain(..nin);
+            let produced = &self.out_buf[..nout];
+            let skip = self.skip.min(produced.len());
+            self.skip -= skip;
+            self.out.extend_from_slice(&produced[skip..]);
+        }
+    }
+
+    /// Flush the tail (zero-padding the input) and return all 16 kHz samples.
+    pub fn finish(mut self) -> Vec<f32> {
+        if self.rs.is_some() {
+            let expected = (self.in_total as f64 * self.ratio).round() as usize;
+            let mut guard = 0;
+            while self.out.len() < expected && guard < 64 {
+                let need = self.rs.as_ref().map_or(0, |r| r.input_frames_next());
+                self.pending.resize(self.pending.len().max(need), 0.0);
+                self.drain(true);
+                if self.pending.len() < need {
+                    self.pending.resize(need, 0.0);
+                }
+                guard += 1;
+            }
+            self.out.truncate(expected);
+        }
+        self.out
+    }
+}
+
 /// Root mean square (0.0 for empty input).
 pub fn rms(s: &[f32]) -> f32 {
     if s.is_empty() {
@@ -98,7 +196,8 @@ pub fn is_silent(s: &[f32]) -> bool {
     if s.is_empty() {
         return true;
     }
-    !s.chunks(FRAME).any(|f| rms(f) > 0.01)
+    // A trailing partial frame under 10 ms is too short to judge; skip it.
+    !s.chunks(FRAME).any(|f| f.len() >= 160 && rms(f) > 0.01)
 }
 
 #[cfg(test)]
@@ -197,6 +296,58 @@ mod tests {
             .collect();
         assert!(is_silent(&noise));
         assert!(!is_silent(&sine(300.0, 16_000, 0.5, 0.3)));
+    }
+
+    #[test]
+    fn silence_threshold_boundaries() {
+        let tone = |amp: f32| -> Vec<f32> {
+            (0..4800)
+                .map(|i| if i % 2 == 0 { amp } else { -amp })
+                .collect()
+        };
+        assert!(is_silent(&tone(0.009)));
+        assert!(!is_silent(&tone(0.011)));
+        // trailing partial frame (<10 ms) is ignored, >=10 ms counts
+        let mut x = vec![0.0f32; 480];
+        x.extend(vec![0.5f32; 100]);
+        assert!(is_silent(&x));
+        let mut y = vec![0.0f32; 480];
+        y.extend(vec![0.5f32; 200]);
+        assert!(!is_silent(&y));
+    }
+
+    #[test]
+    fn stream_resampler_matches_offline() {
+        let sig = sine(440.0, 48_000, 2.0, 0.5);
+        let mut sr = StreamResampler::new(48_000);
+        let sizes = [441usize, 1, 960, 17, 3000, 512, 1023, 2048];
+        let (mut i, mut k) = (0, 0);
+        while i < sig.len() {
+            let n = sizes[k % sizes.len()].min(sig.len() - i);
+            sr.push(&sig[i..i + n]);
+            i += n;
+            k += 1;
+        }
+        let live = sr.finish();
+        let offline = resample_to_16k(&sig, 48_000);
+        assert!(
+            (live.len() as i64 - offline.len() as i64).abs() <= 20,
+            "{} vs {}",
+            live.len(),
+            offline.len()
+        );
+        assert!((live.len() as i64 - 32_000).abs() <= 20);
+        assert!((rms(&live) - rms(&offline)).abs() < 0.01);
+        // delay trimmed: tone present right from the start
+        assert!(rms(&live[200..1000]) > 0.3);
+    }
+
+    #[test]
+    fn stream_resampler_passthrough_16k() {
+        let mut sr = StreamResampler::new(16_000);
+        sr.push(&[0.1, 0.2]);
+        sr.push(&[0.3]);
+        assert_eq!(sr.finish(), vec![0.1, 0.2, 0.3]);
     }
 
     #[test]
