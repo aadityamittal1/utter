@@ -1,0 +1,73 @@
+import type { Category, StyleKind } from "../../../lib/types";
+import { STYLE_KINDS } from "../../../lib/types";
+
+export const STYLE_LABELS: Record<StyleKind, string> = {
+  formal: "Formal",
+  casual: "Casual",
+  veryCasual: "Very casual",
+  excited: "Excited",
+};
+
+export const CATEGORY_LABELS: Record<Category, string> = {
+  email: "Email",
+  workChat: "Work chat",
+  personalChat: "Personal chat",
+  aiPrompt: "AI prompts",
+  code: "Code",
+  document: "Documents",
+  other: "Other",
+};
+
+export const CATEGORY_HINTS: Record<Category, string> = {
+  email: "Outlook, Gmail and other mail apps",
+  workChat: "Slack, Teams and similar",
+  personalChat: "WhatsApp, Messages, Discord",
+  aiPrompt: "Chats with an AI assistant",
+  code: "Editors and terminals",
+  document: "Word, Notion, Docs",
+  other: "Everything else",
+};
+
+/** What the user said, per category: a greeting name and the request. */
+const SAMPLES: Record<Category, { name: string; task: string }> = {
+  email: { name: "Priya", task: "send me the contract by Friday" },
+  workChat: { name: "team", task: "review the launch checklist before standup" },
+  personalChat: { name: "Sam", task: "grab me a coffee on your way" },
+  aiPrompt: { name: "", task: "summarize this thread in three bullets" },
+  code: { name: "", task: "add a test for the empty case" },
+  document: { name: "", task: "move the budget section above the timeline" },
+  other: { name: "Alex", task: "send me the address tonight" },
+};
+
+/** Whether a style can be picked for a category. */
+export function isStyleAllowed(category: Category, style: StyleKind): boolean {
+  if (style === "veryCasual") return category === "personalChat";
+  if (style === "excited") return category !== "personalChat";
+  return true;
+}
+
+export function allowedStyles(category: Category): StyleKind[] {
+  return STYLE_KINDS.filter((s) => isStyleAllowed(category, s));
+}
+
+/** Why a style is unavailable, or null when it is allowed. */
+export function disabledReason(category: Category, style: StyleKind): string | null {
+  if (isStyleAllowed(category, style)) return null;
+  return style === "veryCasual" ? "Very casual is only for Personal chat" : "Excited is not offered for Personal chat";
+}
+
+/** The same request rendered in each style. Pure, so it is easy to test. */
+export function renderExample(style: StyleKind, category: Category): string {
+  const { name, task } = SAMPLES[category];
+  const to = (sep: string) => (name ? `${sep}${name}` : "");
+  switch (style) {
+    case "formal":
+      return `Hello${to(" ")}, could you please ${task}? Thank you.`;
+    case "casual":
+      return `Hey${to(" ")}, can you ${task}? Thanks!`;
+    case "veryCasual":
+      return `hey${to(" ").toLowerCase()} can you ${task.toLowerCase()} thx`;
+    case "excited":
+      return `Hey${to(" ")}, can you ${task}? Thanks so much!!`;
+  }
+}
