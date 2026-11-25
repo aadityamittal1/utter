@@ -1,0 +1,13 @@
+{
+  "name": "utter-brand",
+  "private": true,
+  "type": "module",
+  "description": "Brand asset renderer for Utter. Not shipped with the app.",
+  "scripts": { "render": "node scripts/render.mjs" },
+  "devDependencies": {
+    "@fontsource/inter": "5.2.5",
+    "@fontsource/instrument-serif": "5.2.5",
+    "@resvg/resvg-js": "2.6.2",
+    "opentype.js": "1.3.4"
+  }
+}
