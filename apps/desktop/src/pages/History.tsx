@@ -7,6 +7,7 @@ import { useBackendEvent } from "../lib/useBackendEvent";
 import type { HistoryItem } from "../lib/types";
 import { Button, EmptyState, Input, PageHeader, SkeletonRows } from "../components/ui";
 import { HistoryRow } from "./parts/history/HistoryRow";
+import { createLatestGuard } from "./parts/history/latest";
 
 const PAGE = 50;
 
@@ -30,39 +31,44 @@ export default function History() {
   const [confirmClear, setConfirmClear] = useState(false);
   const [loadingMore, setLoadingMore] = useState(false);
   const count = useRef(PAGE);
+  const loaded = useRef(false);
+  const guard = useRef(createLatestGuard());
 
   useEffect(() => {
     const t = setTimeout(() => setDebounced(query.trim()), 200);
     return () => clearTimeout(t);
   }, [query]);
 
-  const load = useCallback(
-    (reset = false) => {
-      if (reset) count.current = PAGE;
-      ipc
-        .historyList(debounced || undefined, count.current, 0)
-        .then((rows) => {
-          setItems(rows);
-          setMore(rows.length >= count.current);
-          setError(null);
-        })
-        .catch((e) => setError(String(e)));
+  /** Fetch `limit` rows. Out-of-order responses are dropped; returns true if applied. */
+  const fetchRows = useCallback(
+    async (limit: number): Promise<boolean> => {
+      const isLatest = guard.current.next();
+      try {
+        const rows = await ipc.historyList(debounced || undefined, limit, 0);
+        if (!isLatest()) return false;
+        count.current = limit;
+        loaded.current = true;
+        setItems(rows);
+        setMore(rows.length >= limit);
+        setError(null);
+        return true;
+      } catch (e) {
+        if (!isLatest()) return false;
+        if (loaded.current) toast.error(`Couldn't refresh history: ${String(e)}`);
+        else setError(String(e));
+        return false;
+      }
     },
     [debounced],
   );
+  const load = useCallback((reset = false) => void fetchRows(reset ? PAGE : count.current), [fetchRows]);
   useEffect(() => load(true), [load]);
   useBackendEvent("history://changed", () => load());
 
   async function loadMore() {
     setLoadingMore(true);
-    count.current += PAGE;
-    await ipc
-      .historyList(debounced || undefined, count.current, 0)
-      .then((rows) => {
-        setItems(rows);
-        setMore(rows.length >= count.current);
-      })
-      .catch((e) => toast.error(String(e)));
+    // count only advances when the larger page actually loads
+    await fetchRows(count.current + PAGE);
     setLoadingMore(false);
   }
 

@@ -1,12 +1,14 @@
-import { useCallback, useEffect, useState } from "react";
+import { useCallback, useEffect, useRef, useState } from "react";
+import { greeting } from "./parts/home/greeting";
+import { createLatestGuard } from "./parts/history/latest";
 import { KeyRound, Lightbulb } from "lucide-react";
 import { ipc } from "../lib/ipc";
-import { useNav, useSettings } from "../lib/store";
+import { toast, useNav, useSettings } from "../lib/store";
 import { useBackendEvent } from "../lib/useBackendEvent";
 import { formatNumber, formatTime, relativeDay } from "../lib/format";
 import type { ApiKeyStatus, HistoryItem, Insights, Action } from "../lib/types";
 import { Button, Card, Chord, PageHeader, SkeletonRows } from "../components/ui";
-import { CATEGORY_LABEL } from "./parts/shared";
+import { CATEGORY_LABEL } from "./parts/history/shared";
 
 const SHORTCUT_ROWS: { action: Action; label: string }[] = [
   { action: "dictate", label: "Hold to dictate" },
@@ -21,13 +23,6 @@ const TIPS = [
   { title: "Command mode", body: "Select text, hold the command shortcut and say \"make this friendlier\" to rewrite it in place." },
   { title: "Dictionary", body: "Names and jargon misheard? Add them to the Dictionary and they will be spelled right every time." },
 ];
-
-function greeting(hour: number): string {
-  if (hour < 5) return "Good evening";
-  if (hour < 12) return "Good morning";
-  if (hour < 18) return "Good afternoon";
-  return "Good evening";
-}
 
 function Stat({ label, value, unit }: { label: string; value: string; unit?: string }) {
   return (
@@ -47,18 +42,28 @@ export default function Home() {
   const [stats, setStats] = useState<Insights | null>(null);
   const [recent, setRecent] = useState<HistoryItem[] | null>(null);
   const [key, setKey] = useState<ApiKeyStatus | null>(null);
+  // Each section loads independently: `settled` flips once the first attempt finished, so nothing shows a skeleton forever.
+  const [settled, setSettled] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [tip, setTip] = useState(() => Math.floor(Math.random() * TIPS.length));
+  const guard = useRef(createLatestGuard());
+  const loaded = useRef(false);
 
   const load = useCallback(() => {
-    Promise.all([ipc.insightsGet(), ipc.historyList(undefined, 5, 0), ipc.apiKeyStatus()])
-      .then(([i, h, k]) => {
-        setStats(i);
-        setRecent(h);
-        setKey(k);
-        setError(null);
-      })
-      .catch((e) => setError(String(e)));
+    const isLatest = guard.current.next();
+    Promise.allSettled([ipc.insightsGet(), ipc.historyList(undefined, 5, 0), ipc.apiKeyStatus()]).then(([i, h, k]) => {
+      if (!isLatest()) return;
+      if (i.status === "fulfilled") setStats(i.value);
+      if (h.status === "fulfilled") setRecent(h.value);
+      if (k.status === "fulfilled") setKey(k.value);
+      const failed = [i, h, k].find((r): r is PromiseRejectedResult => r.status === "rejected");
+      if (failed) {
+        if (loaded.current) toast.error(`Couldn't refresh: ${String(failed.reason)}`);
+        else setError(String(failed.reason));
+      } else setError(null);
+      loaded.current = true;
+      setSettled(true);
+    });
   }, []);
   useEffect(load, [load]);
   useBackendEvent("history://changed", load);
@@ -93,9 +98,9 @@ export default function Home() {
           ))}
         </section>
 
-        {error && !stats ? (
+        {settled && !stats ? (
           <Card className="flex items-center justify-between px-5 py-4 text-[13px] text-muted">
-            <span>Couldn't load your stats: {error}</span>
+            <span>Couldn't load your stats{error ? `: ${error}` : ""}</span>
             <Button size="sm" onClick={load}>
               Try again
             </Button>
@@ -123,7 +128,16 @@ export default function Home() {
               </button>
             </div>
             {recent === null ? (
-              <SkeletonRows rows={3} />
+              settled ? (
+                <p className="rounded-card border border-dashed border-line-strong px-5 py-8 text-center text-[13px] text-muted">
+                  Couldn't load recent activity.{" "}
+                  <button type="button" onClick={load} className="rounded text-accent hover:underline">
+                    Try again
+                  </button>
+                </p>
+              ) : (
+                <SkeletonRows rows={3} />
+              )
             ) : recent.length === 0 ? (
               <p className="rounded-card border border-dashed border-line-strong px-5 py-8 text-center text-[13px] text-muted">
                 Nothing yet. Hold your dictate shortcut in any app and start talking.

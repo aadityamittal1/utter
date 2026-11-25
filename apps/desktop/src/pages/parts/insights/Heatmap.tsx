@@ -1,6 +1,6 @@
 import { useState, type CSSProperties } from "react";
 import { formatNumber } from "../../../lib/format";
-import { heatLevel } from "./scale";
+import { heatLevel, topSlots } from "./scale";
 
 // Monday-first, matching the backend's heatmap rows.
 const DAYS = ["Mon", "Tue", "Wed", "Thu", "Fri", "Sat", "Sun"];
@@ -23,23 +23,24 @@ function cellStyle(level: number): CSSProperties {
 export function Heatmap({ data }: { data: number[][] }) {
   const [active, setActive] = useState<{ d: number; h: number } | null>(null);
   const max = Math.max(0, ...data.flat());
+  const top = topSlots(data, 3);
+  const summary =
+    top.length === 0
+      ? "Words by weekday and hour. No data yet."
+      : `Words by weekday and hour. Busiest times: ${top.map((s) => `${FULL_DAYS[s.d]} ${hourLabel(s.h)}, ${formatNumber(s.v)} words`).join("; ")}.`;
   const activeValue = active ? (data[active.d]?.[active.h] ?? 0) : null;
 
   return (
     <div>
-      <div className="grid gap-[3px]" style={{ gridTemplateColumns: "32px repeat(24, minmax(0, 1fr))" }}>
+      <div role="img" aria-label={summary} className="grid gap-[3px]" style={{ gridTemplateColumns: "32px repeat(24, minmax(0, 1fr))" }}>
         {data.slice(0, 7).map((row, d) => (
           <div key={d} className="contents">
             <div className="flex items-center text-[11px] text-faint">{DAYS[d]}</div>
             {row.map((v, h) => (
-              <button
+              <div
                 key={h}
-                type="button"
                 onMouseEnter={() => setActive({ d, h })}
                 onMouseLeave={() => setActive(null)}
-                onFocus={() => setActive({ d, h })}
-                onBlur={() => setActive(null)}
-                aria-label={`${FULL_DAYS[d]} ${hourLabel(h)}: ${formatNumber(v)} words`}
                 className="aspect-square min-h-3 rounded-[3px] transition-transform hover:scale-110"
                 style={cellStyle(heatLevel(v, max))}
               />
@@ -54,7 +55,7 @@ export function Heatmap({ data }: { data: number[][] }) {
         ))}
       </div>
       <div className="mt-3 flex items-center justify-between text-xs text-muted">
-        <span aria-live="polite" className="min-h-4">
+        <span aria-hidden className="min-h-4">
           {active && activeValue !== null ? `${FULL_DAYS[active.d]} ${hourLabel(active.h)}: ${formatNumber(activeValue)} words` : ""}
         </span>
         <span className="flex items-center gap-1.5" aria-hidden>

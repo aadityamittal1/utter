@@ -1,4 +1,6 @@
-import { useCallback, useEffect, useState } from "react";
+import { useCallback, useEffect, useRef, useState } from "react";
+import { toast } from "../lib/store";
+import { createLatestGuard } from "./parts/history/latest";
 import { ChartColumn } from "lucide-react";
 import { ipc } from "../lib/ipc";
 import { formatNumber, formatUsd } from "../lib/format";
@@ -7,7 +9,7 @@ import type { Insights as InsightsData, Usage } from "../lib/types";
 import { Button, CardSection, EmptyState, PageHeader, SkeletonRows } from "../components/ui";
 import { Heatmap } from "./parts/insights/Heatmap";
 import { BarList } from "./parts/insights/BarList";
-import { CATEGORY_LABEL } from "./parts/shared";
+import { CATEGORY_LABEL } from "./parts/history/shared";
 
 function Stat({ label, value, unit }: { label: string; value: string; unit?: string }) {
   return (
@@ -31,14 +33,23 @@ export default function Insights() {
   const [usage, setUsage] = useState<Usage | null>(null);
   const [error, setError] = useState<string | null>(null);
 
+  const loaded = useRef(false);
+  const guard = useRef(createLatestGuard());
   const load = useCallback(() => {
+    const isLatest = guard.current.next();
     Promise.all([ipc.insightsGet(), ipc.usageGet()])
       .then(([i, u]) => {
+        if (!isLatest()) return;
+        loaded.current = true;
         setData(i);
         setUsage(u);
         setError(null);
       })
-      .catch((e) => setError(String(e)));
+      .catch((e) => {
+        if (!isLatest()) return;
+        if (loaded.current) toast.error(`Couldn't refresh insights: ${String(e)}`);
+        else setError(String(e));
+      });
   }, []);
   useEffect(load, [load]);
   useBackendEvent("history://changed", load);
@@ -61,11 +72,24 @@ export default function Insights() {
       </>
     );
   }
+  const usageCard = (
+    <CardSection title="AI usage this month" description="Estimated from token counts at published rates.">
+      <div className="flex flex-wrap gap-x-10 gap-y-3">
+        <Stat label="Input tokens" value={formatNumber(usage.monthInputTokens)} />
+        <Stat label="Output tokens" value={formatNumber(usage.monthOutputTokens)} />
+        <Stat label="Estimated cost" value={formatUsd(usage.estCostUsd)} />
+      </div>
+    </CardSection>
+  );
+
   if (data.totalWords === 0) {
     return (
       <>
         {header}
-        <EmptyState icon={<ChartColumn size={18} />} title="Nothing to show yet" description="Dictate something and your stats will appear here." />
+        <div className="flex flex-col gap-5 pb-10">
+          <EmptyState icon={<ChartColumn size={18} />} title="Nothing to show yet" description="Dictate something and your stats will appear here." />
+          {usageCard}
+        </div>
       </>
     );
   }
@@ -96,13 +120,7 @@ export default function Insights() {
           </CardSection>
         </div>
 
-        <CardSection title="AI usage this month" description="Estimated from token counts at published rates.">
-          <div className="flex flex-wrap gap-x-10 gap-y-3">
-            <Stat label="Input tokens" value={formatNumber(usage.monthInputTokens)} />
-            <Stat label="Output tokens" value={formatNumber(usage.monthOutputTokens)} />
-            <Stat label="Estimated cost" value={formatUsd(usage.estCostUsd)} />
-          </div>
-        </CardSection>
+        {usageCard}
       </div>
     </>
   );

@@ -1,4 +1,4 @@
-import type { Category } from "../../lib/types";
+import type { Category } from "../../../lib/types";
 
 export const CATEGORY_LABEL: Record<Category, string> = {
   email: "Email",

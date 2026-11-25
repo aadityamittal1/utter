@@ -1,13 +1,13 @@
-import { useMemo, useRef, useState } from "react";
+import { useEffect, useMemo, useRef, useState } from "react";
 import { ClipboardCopy, CornerDownLeft, Ellipsis, Pencil, Play, Plus, RotateCw, Square, Trash2, X, Sparkles } from "lucide-react";
-import { convertFileSrc } from "@tauri-apps/api/core";
-import { ipc, isTauri } from "../../../lib/ipc";
+import { ipc } from "../../../lib/ipc";
 import { formatTime } from "../../../lib/format";
 import { toast } from "../../../lib/store";
 import type { HistoryItem } from "../../../lib/types";
 import { Button, IconButton, Textarea } from "../../../components/ui";
-import { CATEGORY_LABEL } from "../shared";
+import { CATEGORY_LABEL } from "./shared";
 import { wordDiff } from "./diff";
+import { playClip } from "./player";
 
 const errText = (e: unknown) => (typeof e === "string" ? e : e instanceof Error ? e.message : "Something went wrong");
 
@@ -18,7 +18,17 @@ export function HistoryRow({ item, onChanged }: { item: HistoryItem; onChanged: 
   const [busy, setBusy] = useState<string | null>(null);
   const [candidates, setCandidates] = useState<string[]>([]);
   const [playing, setPlaying] = useState(false);
-  const audioRef = useRef<HTMLAudioElement | null>(null);
+  const stopRef = useRef<(() => void) | null>(null);
+  const aliveRef = useRef(true);
+
+  // Silence this row's clip if the row goes away (navigation, delete, filter).
+  useEffect(() => {
+    aliveRef.current = true;
+    return () => {
+      aliveRef.current = false;
+      stopRef.current?.();
+    };
+  }, []);
 
   const diff = useMemo(() => (open ? wordDiff(item.rawText, item.finalText) : []), [open, item.rawText, item.finalText]);
   const changed = item.rawText.trim() !== item.finalText.trim();
@@ -37,25 +47,22 @@ export function HistoryRow({ item, onChanged }: { item: HistoryItem; onChanged: 
 
   async function togglePlay() {
     if (playing) {
-      audioRef.current?.pause();
-      setPlaying(false);
+      stopRef.current?.();
       return;
     }
     try {
       const path = await ipc.historyAudioPath(item.id);
+      if (!aliveRef.current) return;
       if (!path) {
         toast.error("The audio for this dictation is no longer available");
         return;
       }
-      const a = new Audio(isTauri() ? convertFileSrc(path) : path);
-      audioRef.current = a;
-      a.onended = () => setPlaying(false);
-      a.onerror = () => {
-        setPlaying(false);
-        toast.error("Couldn't play the audio");
-      };
-      await a.play();
       setPlaying(true);
+      stopRef.current = playClip(
+        path,
+        () => setPlaying(false),
+        () => toast.error("Couldn't play the audio"),
+      );
     } catch (e) {
       setPlaying(false);
       toast.error(errText(e));

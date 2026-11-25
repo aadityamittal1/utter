@@ -24,4 +24,18 @@ describe("wordDiff", () => {
   it("ignores whitespace differences", () => {
     expect(wordDiff("a  b\n c", "a b c")).toEqual([{ kind: "same", text: "a b c" }]);
   });
+  it("keeps common prefix and suffix as single same ops", () => {
+    expect(wordDiff("one two X three four", "one two Y three four")).toEqual([
+      { kind: "same", text: "one two" },
+      { kind: "del", text: "X" },
+      { kind: "add", text: "Y" },
+      { kind: "same", text: "three four" },
+    ]);
+  });
+  it("falls back to plain before/after for huge changed regions", () => {
+    const a = Array.from({ length: 2100 }, (_, i) => `a${i}`).join(" ");
+    const b = Array.from({ length: 2100 }, (_, i) => `b${i}`).join(" ");
+    const ops = wordDiff(`start ${a} end`, `start ${b} end`);
+    expect(ops.map((o) => o.kind)).toEqual(["same", "del", "add", "same"]);
+  });
 });

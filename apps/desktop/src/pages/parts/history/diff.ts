@@ -2,8 +2,32 @@ export type DiffOp = { kind: "same" | "del" | "add"; text: string };
 
 /** Word-level diff (LCS). Tokens are whitespace-separated words; ops keep original order. */
 export function wordDiff(a: string, b: string): DiffOp[] {
-  const x = a.split(/\s+/).filter(Boolean);
-  const y = b.split(/\s+/).filter(Boolean);
+  const ax = a.split(/\s+/).filter(Boolean);
+  const bx = b.split(/\s+/).filter(Boolean);
+  // Trim the common prefix and suffix so the quadratic table only covers what changed.
+  let pre = 0;
+  while (pre < ax.length && pre < bx.length && ax[pre] === bx[pre]) pre++;
+  let suf = 0;
+  while (suf < ax.length - pre && suf < bx.length - pre && ax[ax.length - 1 - suf] === bx[bx.length - 1 - suf]) suf++;
+  const x = ax.slice(pre, ax.length - suf);
+  const y = bx.slice(pre, bx.length - suf);
+  const head: DiffOp[] = pre ? [{ kind: "same", text: ax.slice(0, pre).join(" ") }] : [];
+  const tail: DiffOp[] = suf ? [{ kind: "same", text: ax.slice(ax.length - suf).join(" ") }] : [];
+  let mid: DiffOp[];
+  if (x.length > MAX_WORDS || y.length > MAX_WORDS) {
+    // Too large to diff precisely: show plain before/after.
+    mid = [];
+    if (x.length) mid.push({ kind: "del", text: x.join(" ") });
+    if (y.length) mid.push({ kind: "add", text: y.join(" ") });
+  } else {
+    mid = lcsDiff(x, y);
+  }
+  return [...head, ...mid, ...tail];
+}
+
+const MAX_WORDS = 2000;
+
+function lcsDiff(x: string[], y: string[]): DiffOp[] {
   const n = x.length;
   const m = y.length;
   const t: number[][] = Array.from({ length: n + 1 }, () => new Array<number>(m + 1).fill(0));
