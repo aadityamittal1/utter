@@ -44,58 +44,75 @@ interface SettingsStore {
   replace: (s: Settings) => void;
 }
 
-let saveQueue: Promise<void> = Promise.resolve();
-let pendingSaves = 0;
+const SAVE_TIMEOUT_MS = 15_000;
 
-export const useSettings = create<SettingsStore>((set, get) => ({
-  settings: null,
-  loading: true,
-  error: null,
-  load: async () => {
-    try {
-      const s = await ipc.getSettings();
-      applyTheme(s.theme);
-      set({ settings: s, loading: false, error: null });
-    } catch (e) {
-      set({ loading: false, error: String(e) });
-    }
-  },
-  update: (patch) => {
-    const cur = get().settings;
-    if (!cur) return Promise.resolve();
-    const keys = Object.keys(patch) as Array<keyof Settings>;
-    const previous: Partial<Settings> = {};
-    for (const k of keys) (previous as Record<string, unknown>)[k] = cur[k];
-    if (patch.theme) applyTheme(patch.theme);
-    set({ settings: { ...cur, ...patch } });
-    pendingSaves++;
-    saveQueue = saveQueue.then(async () => {
+/** Last settings confirmed by the backend (a save response or settings://changed). */
+let base: Settings | null = null;
+/** Edits applied optimistically but not yet confirmed, oldest first. */
+let pending: Array<{ id: number; patch: Partial<Settings> }> = [];
+let nextPatchId = 0;
+let saveQueue: Promise<void> = Promise.resolve();
+
+const withPending = (b: Settings): Settings => pending.reduce((acc, p) => ({ ...acc, ...p.patch }), b);
+
+function withTimeout<T>(p: Promise<T>, ms: number): Promise<T> {
+  return new Promise<T>((resolve, reject) => {
+    const t = setTimeout(() => reject("Saving settings timed out"), ms);
+    p.then(
+      (v) => (clearTimeout(t), resolve(v)),
+      (e) => (clearTimeout(t), reject(e)),
+    );
+  });
+}
+
+export const useSettings = create<SettingsStore>((set) => {
+  /** Recompute the visible settings from the confirmed base plus pending edits. */
+  const publish = (extra: Partial<SettingsStore> = {}) => {
+    if (!base) return;
+    const visible = withPending(base);
+    applyTheme(visible.theme);
+    set({ settings: visible, ...extra });
+  };
+
+  return {
+    settings: null,
+    loading: true,
+    error: null,
+    load: async () => {
       try {
-        const latest = get().settings;
-        if (!latest) return;
-        const saved = await ipc.updateSettings(latest);
-        pendingSaves--;
-        // Only adopt the server copy when no newer local edits are waiting.
-        set(pendingSaves === 0 ? { settings: saved, error: null } : { error: null });
+        base = await ipc.getSettings();
+        publish({ loading: false, error: null });
       } catch (e) {
-        pendingSaves--;
-        const s = get().settings;
-        const msg = typeof e === "string" ? e : e instanceof Error ? e.message : "Couldn't save settings";
-        if (s) {
-          const restored = { ...s, ...previous };
-          if (previous.theme) applyTheme(previous.theme);
-          set({ settings: restored, error: msg });
-        }
-        toast.error(msg);
+        set({ loading: false, error: String(e) });
       }
-    });
-    return saveQueue;
-  },
-  replace: (s) => {
-    applyTheme(s.theme);
-    set({ settings: s });
-  },
-}));
+    },
+    update: (patch) => {
+      if (!base) return Promise.resolve();
+      const entry = { id: ++nextPatchId, patch };
+      pending = [...pending, entry];
+      publish();
+      saveQueue = saveQueue.then(async () => {
+        try {
+          // Earlier saves are settled, so the confirmed base plus this edit is what gets persisted.
+          const saved = await withTimeout(ipc.updateSettings({ ...base!, ...entry.patch }), SAVE_TIMEOUT_MS);
+          base = saved;
+          pending = pending.filter((p) => p.id !== entry.id);
+          publish({ error: null });
+        } catch (e) {
+          pending = pending.filter((p) => p.id !== entry.id); // roll back only this edit
+          const msg = typeof e === "string" ? e : e instanceof Error ? e.message : "Couldn't save settings";
+          publish({ error: msg });
+          toast.error(msg);
+        }
+      });
+      return saveQueue;
+    },
+    replace: (s) => {
+      base = s;
+      publish();
+    },
+  };
+});
 
 function pageFromHash(): Page {
   const h = typeof location === "undefined" ? "" : location.hash.replace(/^#\/?/, "");
