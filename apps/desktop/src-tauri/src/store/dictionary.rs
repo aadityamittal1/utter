@@ -36,6 +36,42 @@ fn normalize(word: &str, heard_as: Option<&str>) -> Result<(String, Option<Strin
     Ok((word.to_string(), heard.map(str::to_string)))
 }
 
+/// Max data rows read from one CSV import (a header row does not count).
+pub const MAX_IMPORT_ROWS: usize = 5000;
+
+/// Insert unless an identical entry exists (case-insensitive). Returns (entry, created).
+fn add_with(
+    conn: &rusqlite::Connection,
+    word: &str,
+    heard_as: Option<&str>,
+    auto: bool,
+) -> Result<(DictEntry, bool)> {
+    let (word, heard) = normalize(word, heard_as)?;
+    let existing = conn
+        .query_row(
+            "SELECT id, word, heard_as, auto FROM dictionary \
+             WHERE word = ?1 COLLATE NOCASE AND COALESCE(heard_as,'') = COALESCE(?2,'') COLLATE NOCASE",
+            params![word, heard],
+            row_to_entry,
+        )
+        .optional()?;
+    if let Some(e) = existing {
+        return Ok((e, false));
+    }
+    conn.execute(
+        "INSERT INTO dictionary (word, heard_as, auto) VALUES (?1, ?2, ?3)",
+        params![word, heard, auto as i64],
+    )?;
+    Ok((
+        DictEntry {
+            id: conn.last_insert_rowid(),
+            word,
+            heard_as: heard,
+            auto,
+        },
+        true,
+    ))
+}
 impl Db {
     pub fn dictionary_list(&self) -> Vec<DictEntry> {
         let conn = self.conn();
@@ -56,31 +92,9 @@ impl Db {
         heard_as: Option<&str>,
         auto: bool,
     ) -> Result<DictEntry> {
-        let (word, heard) = normalize(word, heard_as)?;
         let conn = self.conn();
-        let existing = conn
-            .query_row(
-                "SELECT id, word, heard_as, auto FROM dictionary \
-                 WHERE word = ?1 COLLATE NOCASE AND COALESCE(heard_as,'') = COALESCE(?2,'') COLLATE NOCASE",
-                params![word, heard],
-                row_to_entry,
-            )
-            .optional()?;
-        if let Some(e) = existing {
-            return Ok(e);
-        }
-        conn.execute(
-            "INSERT INTO dictionary (word, heard_as, auto) VALUES (?1, ?2, ?3)",
-            params![word, heard, auto as i64],
-        )?;
-        Ok(DictEntry {
-            id: conn.last_insert_rowid(),
-            word,
-            heard_as: heard,
-            auto,
-        })
+        Ok(add_with(&conn, word, heard_as, auto)?.0)
     }
-
     pub fn dictionary_update(&self, entry: &DictEntry) -> Result<DictEntry> {
         let (word, heard) = normalize(&entry.word, entry.heard_as.as_deref())?;
         let n = self.conn().execute(
@@ -110,23 +124,27 @@ impl Db {
             .has_headers(false)
             .flexible(true)
             .from_reader(text.trim_start_matches('\u{feff}').as_bytes());
+        let mut conn = self.conn();
+        let tx = conn.transaction()?;
         let mut added = 0;
+        let mut data_rows = 0;
         for (i, rec) in rdr.records().enumerate() {
             let Ok(rec) = rec else { continue };
             let word = rec.get(0).unwrap_or("");
             if i == 0 && word.trim().eq_ignore_ascii_case("word") {
                 continue;
             }
-            let before = self.dictionary_list().len();
-            if self.dictionary_add(word, rec.get(1), false).is_ok()
-                && self.dictionary_list().len() > before
-            {
+            data_rows += 1;
+            if data_rows > MAX_IMPORT_ROWS {
+                break;
+            }
+            if matches!(add_with(&tx, word, rec.get(1), false), Ok((_, true))) {
                 added += 1;
             }
         }
+        tx.commit()?;
         Ok(added)
     }
-
     pub fn dictionary_export_csv(&self) -> Result<String> {
         let mut w = csv::Writer::from_writer(Vec::new());
         w.write_record(["word", "heard_as"])?;
@@ -171,6 +189,17 @@ mod tests {
             .dictionary_add("ok", Some(&"b".repeat(61)), false)
             .is_err());
         assert!(db.dictionary_add("   ", None, false).is_err());
+    }
+
+    #[test]
+    fn csv_import_is_capped_at_5000_rows() {
+        let db = Db::open_in_memory().unwrap();
+        let mut csv = String::from("word,heard_as\n");
+        for i in 0..5100 {
+            csv.push_str(&format!("w{i},\n"));
+        }
+        assert_eq!(db.dictionary_import_csv(&csv).unwrap(), MAX_IMPORT_ROWS);
+        assert_eq!(db.dictionary_list().len(), MAX_IMPORT_ROWS);
     }
 
     #[test]

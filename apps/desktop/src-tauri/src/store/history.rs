@@ -101,10 +101,10 @@ fn escape_like(s: &str) -> String {
 }
 
 impl Db {
-    /// Insert a history row; returns the new id, or -1 if the insert failed (logged).
-    pub fn insert_history(&self, h: &NewHistory) -> i64 {
+    /// Insert a history row; returns the new id.
+    pub fn insert_history(&self, h: &NewHistory) -> Result<i64> {
         let conn = self.conn();
-        let res = conn.execute(
+        conn.execute(
             "INSERT INTO history (created_at, app_name, category, mode, raw_text, final_text, \
              duration_ms, words, used_ai, audio_path, error) VALUES (?1,?2,?3,?4,?5,?6,?7,?8,?9,?10,?11)",
             params![
@@ -120,14 +120,8 @@ impl Db {
                 h.audio_path,
                 h.error
             ],
-        );
-        match res {
-            Ok(_) => conn.last_insert_rowid(),
-            Err(e) => {
-                log::error!("history insert failed: {e}");
-                -1
-            }
-        }
+        )?;
+        Ok(conn.last_insert_rowid())
     }
 
     /// Newest first. `query` matches final or raw text (case-insensitive substring).
@@ -192,27 +186,49 @@ impl Db {
         Ok(())
     }
 
-    pub fn delete_history(&self, id: i64) -> Result<()> {
-        self.conn()
-            .execute("DELETE FROM history WHERE id = ?1", [id])?;
-        Ok(())
+    /// Delete one item; returns its audio path (if any) for the caller to remove.
+    pub fn delete_history(&self, id: i64) -> Option<String> {
+        self.delete_audio_rows("id = ?1", params![id])
+            .into_iter()
+            .next()
     }
 
-    pub fn clear_history(&self) -> Result<()> {
-        self.conn().execute("DELETE FROM history", [])?;
-        Ok(())
+    /// Delete everything; returns all audio paths.
+    pub fn clear_history(&self) -> Vec<String> {
+        self.delete_audio_rows("1 = 1", params![])
     }
 
     /// `Day` deletes items older than 24 h; `Never` deletes everything; `Forever` is a no-op.
-    pub fn purge_history(&self, retention: Retention, now_ms: i64) -> Result<usize> {
-        let conn = self.conn();
-        Ok(match retention {
-            Retention::Forever => 0,
-            Retention::Day => conn.execute(
-                "DELETE FROM history WHERE created_at < ?1",
-                [now_ms - 24 * 3600 * 1000],
-            )?,
-            Retention::Never => conn.execute("DELETE FROM history", [])?,
+    /// Returns the audio paths of the deleted rows.
+    pub fn purge_history(&self, retention: Retention, now_ms: i64) -> Vec<String> {
+        match retention {
+            Retention::Forever => Vec::new(),
+            Retention::Day => {
+                self.delete_audio_rows("created_at < ?1", params![now_ms - 24 * 3600 * 1000])
+            }
+            Retention::Never => self.delete_audio_rows("1 = 1", params![]),
+        }
+    }
+
+    /// SELECT the audio paths then DELETE the same rows in one transaction (errors are logged).
+    fn delete_audio_rows(&self, where_sql: &str, args: &[&dyn rusqlite::ToSql]) -> Vec<String> {
+        let run = || -> rusqlite::Result<Vec<String>> {
+            let mut conn = self.conn();
+            let tx = conn.transaction()?;
+            let paths = {
+                let mut st = tx.prepare(&format!(
+                    "SELECT audio_path FROM history WHERE ({where_sql}) AND audio_path IS NOT NULL"
+                ))?;
+                let rows = st.query_map(args, |r| r.get::<_, String>(0))?;
+                rows.collect::<rusqlite::Result<Vec<_>>>()?
+            };
+            tx.execute(&format!("DELETE FROM history WHERE {where_sql}"), args)?;
+            tx.commit()?;
+            Ok(paths)
+        };
+        run().unwrap_or_else(|e| {
+            log::error!("history delete failed: {e}");
+            Vec::new()
         })
     }
 
@@ -264,9 +280,11 @@ mod tests {
     #[test]
     fn insert_list_newest_first_and_get() {
         let db = Db::open_in_memory().unwrap();
-        let a = db.insert_history(&sample(1000, "one raw", "One."));
-        let b = db.insert_history(&sample(3000, "three raw", "Three."));
-        let c = db.insert_history(&sample(2000, "two raw", "Two."));
+        let a = db.insert_history(&sample(1000, "one raw", "One.")).unwrap();
+        let b = db
+            .insert_history(&sample(3000, "three raw", "Three."))
+            .unwrap();
+        let c = db.insert_history(&sample(2000, "two raw", "Two.")).unwrap();
         let ids: Vec<i64> = db.list_history(None, 10, 0).iter().map(|h| h.id).collect();
         assert_eq!(ids, vec![b, c, a]);
         let page: Vec<i64> = db.list_history(None, 1, 1).iter().map(|h| h.id).collect();
@@ -280,8 +298,10 @@ mod tests {
     #[test]
     fn search_matches_final_or_raw_text() {
         let db = Db::open_in_memory().unwrap();
-        db.insert_history(&sample(1, "um hello world", "Hello world."));
-        db.insert_history(&sample(2, "something else", "Entirely different."));
+        db.insert_history(&sample(1, "um hello world", "Hello world."))
+            .unwrap();
+        db.insert_history(&sample(2, "something else", "Entirely different."))
+            .unwrap();
         assert_eq!(db.list_history(Some("hello"), 10, 0).len(), 1);
         assert_eq!(
             db.list_history(Some("um hello"), 10, 0).len(),
@@ -304,15 +324,15 @@ mod tests {
     #[test]
     fn update_delete_clear() {
         let db = Db::open_in_memory().unwrap();
-        let id = db.insert_history(&sample(1, "a", "b"));
+        let id = db.insert_history(&sample(1, "a", "b")).unwrap();
         db.update_history_text(id, "three whole words").unwrap();
         let h = db.get_history(id).unwrap();
         assert_eq!((h.final_text.as_str(), h.words), ("three whole words", 3));
         assert!(db.update_history_text(999, "x").is_err());
-        db.delete_history(id).unwrap();
+        db.delete_history(id);
         assert!(db.get_history(id).is_none());
-        db.insert_history(&sample(1, "a", "b"));
-        db.clear_history().unwrap();
+        db.insert_history(&sample(1, "a", "b")).unwrap();
+        db.clear_history();
         assert!(db.list_history(None, 10, 0).is_empty());
     }
 
@@ -321,7 +341,7 @@ mod tests {
         let db = Db::open_in_memory().unwrap();
         let mut h = sample(1, "a", "b");
         h.audio_path = Some("C:\\a.wav".into());
-        let id = db.insert_history(&h);
+        let id = db.insert_history(&h).unwrap();
         assert!(db.get_history(id).unwrap().has_audio);
         assert_eq!(db.history_audio_path(id).as_deref(), Some("C:\\a.wav"));
     }
@@ -330,25 +350,72 @@ mod tests {
     fn purge_by_retention() {
         let now = 10 * 24 * 3600 * 1000;
         let db = Db::open_in_memory().unwrap();
-        db.insert_history(&sample(now - 25 * 3600 * 1000, "old", "old"));
-        db.insert_history(&sample(now - 3600 * 1000, "new", "new"));
-        db.purge_history(Retention::Forever, now).unwrap();
+        db.insert_history(&sample(now - 25 * 3600 * 1000, "old", "old"))
+            .unwrap();
+        db.insert_history(&sample(now - 3600 * 1000, "new", "new"))
+            .unwrap();
+        db.purge_history(Retention::Forever, now);
         assert_eq!(db.list_history(None, 10, 0).len(), 2);
-        db.purge_history(Retention::Day, now).unwrap();
+        db.purge_history(Retention::Day, now);
         let left = db.list_history(None, 10, 0);
         assert_eq!(left.len(), 1);
         assert_eq!(left[0].final_text, "new");
-        db.purge_history(Retention::Never, now).unwrap();
+        db.purge_history(Retention::Never, now);
+        assert!(db.list_history(None, 10, 0).is_empty());
+    }
+
+    fn with_audio(created_at: i64, path: Option<&str>) -> NewHistory {
+        let mut h = sample(created_at, "r", "f");
+        h.audio_path = path.map(str::to_string);
+        h
+    }
+
+    #[test]
+    fn delete_returns_audio_path() {
+        let db = Db::open_in_memory().unwrap();
+        let a = db.insert_history(&with_audio(1, Some("a.wav"))).unwrap();
+        let b = db.insert_history(&with_audio(2, None)).unwrap();
+        assert_eq!(db.delete_history(b), None);
+        assert_eq!(db.delete_history(a).as_deref(), Some("a.wav"));
+        assert_eq!(db.delete_history(a), None, "already gone");
+        assert!(db.list_history(None, 10, 0).is_empty());
+    }
+
+    #[test]
+    fn clear_returns_all_audio_paths() {
+        let db = Db::open_in_memory().unwrap();
+        db.insert_history(&with_audio(1, Some("a.wav"))).unwrap();
+        db.insert_history(&with_audio(2, None)).unwrap();
+        db.insert_history(&with_audio(3, Some("c.wav"))).unwrap();
+        let mut paths = db.clear_history();
+        paths.sort();
+        assert_eq!(paths, vec!["a.wav", "c.wav"]);
+        assert!(db.list_history(None, 10, 0).is_empty());
+        assert!(db.clear_history().is_empty());
+    }
+
+    #[test]
+    fn purge_returns_audio_paths_of_deleted_rows_only() {
+        let now = 10 * 24 * 3600 * 1000;
+        let db = Db::open_in_memory().unwrap();
+        db.insert_history(&with_audio(now - 25 * 3600 * 1000, Some("old.wav")))
+            .unwrap();
+        db.insert_history(&with_audio(now - 3600 * 1000, Some("new.wav")))
+            .unwrap();
+        assert!(db.purge_history(Retention::Forever, now).is_empty());
+        assert_eq!(db.purge_history(Retention::Day, now), vec!["old.wav"]);
+        assert_eq!(db.list_history(None, 10, 0).len(), 1);
+        assert_eq!(db.purge_history(Retention::Never, now), vec!["new.wav"]);
         assert!(db.list_history(None, 10, 0).is_empty());
     }
 
     #[test]
     fn stats_exclude_failed_items() {
         let db = Db::open_in_memory().unwrap();
-        db.insert_history(&sample(1, "a b", "a b"));
+        db.insert_history(&sample(1, "a b", "a b")).unwrap();
         let mut bad = sample(2, "x", "x");
         bad.error = Some("boom".into());
-        db.insert_history(&bad);
+        db.insert_history(&bad).unwrap();
         let stats = db.history_stats();
         assert_eq!(stats.len(), 1);
         assert_eq!(stats[0].words, 2);
@@ -357,7 +424,7 @@ mod tests {
     #[test]
     fn serializes_camel_case_without_null_error() {
         let db = Db::open_in_memory().unwrap();
-        let id = db.insert_history(&sample(1, "a", "b"));
+        let id = db.insert_history(&sample(1, "a", "b")).unwrap();
         let v = serde_json::to_value(db.get_history(id).unwrap()).unwrap();
         assert!(v.get("error").is_none());
         assert_eq!(v["createdAt"], 1);

@@ -109,6 +109,37 @@ impl Settings {
         }
     }
 
+    /// Give every default action (incl. the built-in transforms) its default chord when the
+    /// map has no entry for it. Present entries, even empty ones, are never changed.
+    fn fill_missing_shortcuts(&mut self) {
+        for (action, chords) in default_shortcuts() {
+            self.shortcuts.entry(action).or_insert(chords);
+        }
+    }
+
+    /// Build settings from a JSON object field by field: a field that fails to parse (wrong
+    /// type, unknown enum value from a newer version) falls back to its default and the rest
+    /// is kept.
+    fn from_object_lenient(file: serde_json::Map<String, serde_json::Value>) -> Settings {
+        use serde_json::Value;
+        let Ok(Value::Object(mut current)) = serde_json::to_value(Settings::default()) else {
+            return Settings::default();
+        };
+        for (key, val) in file {
+            if !current.contains_key(&key) {
+                continue; // unknown field: ignore
+            }
+            let mut candidate = current.clone();
+            candidate.insert(key.clone(), val);
+            if serde_json::from_value::<Settings>(Value::Object(candidate.clone())).is_ok() {
+                current = candidate;
+            } else {
+                log::warn!("settings field {key:?} is invalid, using its default");
+            }
+        }
+        serde_json::from_value(Value::Object(current)).unwrap_or_default()
+    }
+
     /// Restore the default shortcut map (the `reset_shortcuts` command).
     pub fn reset_shortcuts(&mut self) {
         self.shortcuts = default_shortcuts();
@@ -119,13 +150,23 @@ impl Settings {
 /// missing fields take their defaults.
 pub fn load(path: &Path) -> Settings {
     let mut s = match std::fs::read_to_string(path) {
-        Ok(text) => serde_json::from_str::<Settings>(&text).unwrap_or_else(|e| {
-            log::warn!("settings file is corrupt, using defaults: {e}");
-            Settings::default()
-        }),
+        Ok(text) => match serde_json::from_str::<serde_json::Value>(&text) {
+            Ok(serde_json::Value::Object(map)) => Settings::from_object_lenient(map),
+            _ => {
+                // Not usable JSON: keep a copy so the next save doesn't destroy it.
+                log::warn!("settings file is corrupt, backing it up and using defaults");
+                let mut bak = path.as_os_str().to_owned();
+                bak.push(".bak");
+                if let Err(e) = std::fs::rename(path, std::path::PathBuf::from(bak)) {
+                    log::warn!("could not back up corrupt settings: {e}");
+                }
+                Settings::default()
+            }
+        },
         Err(_) => Settings::default(),
     };
     s.fill_missing_styles();
+    s.fill_missing_shortcuts();
     s
 }
 
@@ -228,6 +269,75 @@ mod tests {
         let mut expected = Settings::default();
         expected.onboarded = true;
         assert_eq!(s, expected);
+    }
+
+    #[test]
+    fn one_bad_field_only_resets_that_field() {
+        let dir = tempfile::tempdir().unwrap();
+        let path = dir.path().join("settings.json");
+        std::fs::write(
+            &path,
+            r#"{"theme":"neon","onboarded":true,"userName":"Ada","keepAudio":"maybe"}"#,
+        )
+        .unwrap();
+        let s = load(&path);
+        assert!(s.onboarded);
+        assert_eq!(s.user_name, "Ada");
+        assert_eq!(s.theme, Theme::System, "unknown enum value -> default");
+        assert!(s.keep_audio, "wrong type -> default (true)");
+        assert!(
+            !dir.path().join("settings.json.bak").exists(),
+            "valid JSON is not backed up"
+        );
+    }
+
+    #[test]
+    fn invalid_json_is_backed_up_before_defaults() {
+        let dir = tempfile::tempdir().unwrap();
+        let path = dir.path().join("settings.json");
+        std::fs::write(&path, "{ not json !!").unwrap();
+        assert_eq!(load(&path), Settings::default());
+        let bak = dir.path().join("settings.json.bak");
+        assert_eq!(std::fs::read_to_string(bak).unwrap(), "{ not json !!");
+        // Non-object JSON counts as unusable too.
+        std::fs::write(&path, "[1,2]").unwrap();
+        assert_eq!(load(&path), Settings::default());
+    }
+
+    #[test]
+    fn partial_shortcuts_get_missing_defaults_without_overriding() {
+        let dir = tempfile::tempdir().unwrap();
+        let path = dir.path().join("settings.json");
+        std::fs::write(
+            &path,
+            r#"{"shortcuts":{"dictate":["Ctrl+Alt+D"],"cancel":[]}}"#,
+        )
+        .unwrap();
+        let s = load(&path);
+        assert_eq!(
+            s.shortcuts[&Action::Dictate],
+            ["Ctrl+Alt+D"],
+            "present entry kept"
+        );
+        assert!(
+            s.shortcuts[&Action::Cancel].is_empty(),
+            "explicitly cleared stays cleared"
+        );
+        let defaults = default_shortcuts();
+        for (a, chords) in &defaults {
+            if *a != Action::Dictate && *a != Action::Cancel {
+                assert_eq!(&s.shortcuts[a], chords, "{a}");
+            }
+        }
+        assert_eq!(s.shortcuts.len(), defaults.len());
+        assert_eq!(
+            s.shortcuts[&Action::Transform("polish".into())],
+            ["Alt+Shift+1"]
+        );
+        assert_eq!(
+            s.shortcuts[&Action::Transform("prompt".into())],
+            ["Alt+Shift+2"]
+        );
     }
 
     #[test]

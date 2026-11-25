@@ -75,6 +75,13 @@ const MIGRATIONS: &[&str] = &[MIGRATION_1];
 
 fn migrate(conn: &mut Connection) -> Result<()> {
     let current = conn.query_row("PRAGMA user_version", [], |r| r.get::<_, i64>(0))? as usize;
+    if current > MIGRATIONS.len() {
+        return Err(anyhow::anyhow!(
+            "database schema version {current} is newer than this app supports ({}); \
+             update Utter",
+            MIGRATIONS.len()
+        ));
+    }
     for (i, sql) in MIGRATIONS.iter().enumerate().skip(current) {
         let tx = conn.transaction()?;
         tx.execute_batch(sql)
@@ -104,6 +111,7 @@ impl Db {
     }
 
     fn init(conn: &mut Connection) -> Result<()> {
+        conn.busy_timeout(std::time::Duration::from_secs(5))?;
         migrate(conn)
     }
 
@@ -135,6 +143,29 @@ pub(crate) fn enum_from_str<T: serde::de::DeserializeOwned + Default>(s: &str) -
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn refuses_database_from_newer_version() {
+        let dir = tempfile::tempdir().unwrap();
+        let path = dir.path().join("utter.db");
+        {
+            let conn = Connection::open(&path).unwrap();
+            conn.execute_batch("CREATE TABLE marker (x); PRAGMA user_version = 99;")
+                .unwrap();
+        }
+        let err = Db::open(&path).err().expect("must refuse").to_string();
+        assert!(err.contains("newer"), "{err}");
+        // Untouched: no migration was run against it.
+        let conn = Connection::open(&path).unwrap();
+        let tables: i64 = conn
+            .query_row(
+                "SELECT COUNT(*) FROM sqlite_master WHERE name = 'history'",
+                [],
+                |r| r.get(0),
+            )
+            .unwrap();
+        assert_eq!(tables, 0);
+    }
 
     #[test]
     fn migrations_are_idempotent_across_opens() {

@@ -115,6 +115,7 @@ impl Db {
             .flexible(true)
             .from_reader(text.trim_start_matches('\u{feff}').as_bytes());
         let mut added = 0;
+        let mut data_rows = 0;
         for (i, rec) in rdr.records().enumerate() {
             let Ok(rec) = rec else { continue };
             let trigger = rec.get(0).unwrap_or("");
@@ -124,6 +125,10 @@ impl Db {
                 && expansion.trim().eq_ignore_ascii_case("expansion")
             {
                 continue;
+            }
+            data_rows += 1;
+            if data_rows > super::dictionary::MAX_IMPORT_ROWS {
+                break;
             }
             if self.snippets_add(trigger, expansion).is_ok() {
                 added += 1;
@@ -190,6 +195,16 @@ mod tests {
             .find(|s| s.trigger == "sig")
             .unwrap();
         assert_eq!(sig.expansion, tricky);
+    }
+
+    #[test]
+    fn csv_import_is_capped_at_5000_rows() {
+        let db = Db::open_in_memory().unwrap();
+        let mut csv = String::from("trigger,expansion\n");
+        for i in 0..5050 {
+            csv.push_str(&format!("t{i},x\n"));
+        }
+        assert_eq!(db.snippets_import_csv(&csv).unwrap(), 5000);
     }
 
     #[test]
