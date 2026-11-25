@@ -26,7 +26,7 @@ export function StepFrame({ eyebrow, title, subtitle, children, onSubmit }: { ey
   return (
     <form className="flex flex-col" onSubmit={submit} noValidate>
       {eyebrow && <p className="mb-2 text-xs font-semibold uppercase tracking-[0.12em] text-accent">{eyebrow}</p>}
-      <h1 className="font-display text-[40px] leading-[1.1] text-ink outline-none">{title}</h1>
+      <h1 className="font-display text-[40px] leading-[1.1] text-ink outline-none focus:outline-none">{title}</h1>
       {subtitle && <p className="mt-3 max-w-[52ch] text-[15px] leading-relaxed text-muted">{subtitle}</p>}
       <div className="mt-7">{children}</div>
     </form>

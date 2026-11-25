@@ -13,7 +13,7 @@ export function Welcome({ next }: StepProps) {
   return (
     <div className="flex flex-col items-start">
       <LogoMark width={64} />
-      <h1 className="mt-8 font-display text-[56px] leading-[1.04] text-ink">
+      <h1 className="mt-8 font-display text-[56px] leading-[1.04] text-ink outline-none focus:outline-none">
         Speak anywhere.
         <br />
         <span className="text-accent">Utter</span> writes it.

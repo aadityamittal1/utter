@@ -43,6 +43,8 @@ export default function Onboarding() {
     const h = mainRef.current?.querySelector("h1");
     if (h) {
       h.tabIndex = -1;
+      // Programmatic focus only: no ring on the heading (controls keep theirs).
+      h.style.outline = "none";
       h.focus({ preventScroll: true });
     }
   }, [step]);
