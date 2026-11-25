@@ -47,6 +47,10 @@ const WATCHDOG_POLL: Duration = Duration::from_millis(100);
 const HELD_THRESHOLD: Duration = Duration::from_millis(400);
 /// Allowance for the poll interval when comparing the hold start with the last hook event.
 const POLL_SLACK: Duration = Duration::from_millis(150);
+/// Matcher keys physically up this long, with a silent hook = a key-up was missed.
+const STALE_THRESHOLD: Duration = Duration::from_millis(300);
+/// Minimum spacing between re-install attempts while the hook is missing.
+const RETRY_REHOOK: Duration = Duration::from_secs(5);
 /// Re-install the hook this often while no modifier is held (cheap insurance).
 const PERIODIC_REHOOK: Duration = Duration::from_secs(60);
 /// A watchdog tick this late means the machine slept or stalled: re-install.
@@ -55,6 +59,8 @@ const STALL_GAP: Duration = Duration::from_secs(5);
 /// Milliseconds since epoch() of the last event the hook callback saw.
 static LAST_EVENT_MS: AtomicU64 = AtomicU64::new(0);
 static HOOK_INSTALLED: AtomicBool = AtomicBool::new(false);
+/// A re-install failure was already logged (log once until one succeeds).
+static REHOOK_FAILING: AtomicBool = AtomicBool::new(false);
 
 fn epoch() -> Instant {
     static EPOCH: OnceLock<Instant> = OnceLock::new();
@@ -70,15 +76,34 @@ fn last_event_age() -> Duration {
     Duration::from_millis(now.saturating_sub(LAST_EVENT_MS.load(Ordering::Relaxed)))
 }
 
-/// The hook is presumed removed when a chord has been physically held past the threshold
-/// but the hook has seen nothing since before the hold began.
-pub fn should_rehook(held_for: Option<Duration>, last_event_age: Duration) -> bool {
+/// The hook is presumed removed when a chord has been physically held past the threshold, the
+/// hook has seen nothing since before the hold began, and the matcher never saw the press
+/// (if it holds the chord's keys, the hook is alive: never rehook or reset for that hold).
+pub fn should_rehook(
+    held_for: Option<Duration>,
+    last_event_age: Duration,
+    matcher_saw_chord: bool,
+) -> bool {
+    if matcher_saw_chord {
+        return false;
+    }
     match held_for {
         Some(h) if h >= HELD_THRESHOLD => last_event_age > h + POLL_SLACK,
         _ => false,
     }
 }
 
+/// The matcher holds keys that have been physically up for a while and the hook has delivered
+/// nothing since: a key-up was missed (hook removed mid-hold).
+pub fn should_resync(stale_for: Option<Duration>, last_event_age: Duration) -> bool {
+    matches!(stale_for, Some(s) if s >= STALE_THRESHOLD && last_event_age > s)
+}
+
+/// Ticks much later than the poll interval (CPU starvation, sleep) give unreliable timing:
+/// skip detection on them.
+pub fn tick_usable(gap: Duration) -> bool {
+    gap <= WATCHDOG_POLL * 3
+}
 /// Routine re-install: only when no modifier is held, at most once per period.
 pub fn periodic_rehook_due(since_last_rehook: Duration, any_modifier_down: bool) -> bool {
     !any_modifier_down && since_last_rehook >= PERIODIC_REHOOK
@@ -154,15 +179,22 @@ struct CaptureSlot {
 struct Clock {
     last: Option<u32>,
     t: u64,
+    at: Option<Instant>,
 }
 
 impl Clock {
+    /// Best estimate of the current tick: the last event time plus the time since it.
+    fn now(&self) -> u64 {
+        self.t + self.at.map_or(0, |a| a.elapsed().as_millis() as u64)
+    }
+
     fn advance(&mut self, t32: u32) -> u64 {
         self.t = match self.last {
             None => t32 as u64,
             Some(l) => self.t + t32.wrapping_sub(l) as u64,
         };
         self.last = Some(t32);
+        self.at = Some(Instant::now());
         self.t
     }
 }
@@ -279,7 +311,11 @@ pub fn start_hook(matcher: Arc<Mutex<Matcher>>, tx: Sender<RawKey>) -> Result<Ho
                         hook = SetWindowsHookExW(WH_KEYBOARD_LL, Some(hook_proc), None, 0).ok();
                         HOOK_INSTALLED.store(hook.is_some(), Ordering::Relaxed);
                         if hook.is_none() {
-                            log::error!("keyboard hook re-install failed");
+                            if !REHOOK_FAILING.swap(true, Ordering::Relaxed) {
+                                log::error!("keyboard hook re-install failed (will keep retrying)");
+                            }
+                        } else {
+                            REHOOK_FAILING.store(false, Ordering::Relaxed);
                         }
                     }
                 }
@@ -297,6 +333,7 @@ pub fn start_hook(matcher: Arc<Mutex<Matcher>>, tx: Sender<RawKey>) -> Result<Ho
                 std::thread::Builder::new()
                     .name("utter-hotkey-watchdog".into())
                     .spawn(move || watchdog(thread_id, matcher, tx, stop))
+                    .map_err(|e| log::error!("hotkey watchdog failed to start: {e}"))
                     .ok()
             };
             Ok(HookHandle {
@@ -329,48 +366,63 @@ fn watchdog(
     stop: Arc<AtomicBool>,
 ) {
     let mut held_since: Option<Instant> = None;
+    let mut stale_since: Option<Instant> = None;
     let mut last_rehook = Instant::now();
     let mut last_tick = Instant::now();
     while !stop.load(Ordering::Relaxed) {
         std::thread::sleep(WATCHDOG_POLL);
         let now = Instant::now();
-        let gap = now.duration_since(last_tick);
+        let prev_tick = last_tick;
+        let gap = now.duration_since(prev_tick);
         last_tick = now;
-        let chords = matcher
+        let ws = matcher
             .lock()
             .unwrap_or_else(|e| e.into_inner())
-            .modifier_only_chords();
-        let held = chords
-            .iter()
-            .any(|c| !c.is_empty() && c.iter().all(|&k| key_is_down(k)));
-        if held {
-            held_since.get_or_insert(now);
+            .watch_state(key_is_down);
+        if tick_usable(gap) {
+            // The previous tick is the earliest moment a new hold/stale state can have begun
+            // (it was not observed then), so it is the conservative start.
+            held_since = if ws.chord_down {
+                held_since.or(Some(prev_tick))
+            } else {
+                None
+            };
+            stale_since = if ws.stale_held {
+                stale_since.or(Some(prev_tick))
+            } else {
+                None
+            };
+            let age = last_event_age();
+            if should_rehook(
+                held_since.map(|s| now.duration_since(s)),
+                age,
+                ws.chord_seen,
+            ) {
+                log::warn!("keyboard hook was removed by Windows; reinstalled");
+                note_event();
+                post_rehook(thread_id);
+                last_rehook = now;
+                continue;
+            }
+            if should_resync(stale_since.map(|s| now.duration_since(s)), age) {
+                log::warn!("keyboard hook missed a key release; resynced and reinstalled");
+                resync(&tx);
+                post_rehook(thread_id);
+                last_rehook = now;
+                stale_since = None;
+                continue;
+            }
         } else {
             held_since = None;
-        }
-        let held_for = held_since.map(|s| now.duration_since(s));
-        if should_rehook(held_for, last_event_age()) {
-            log::warn!("keyboard hook was removed by Windows; reinstalled");
-            let events = matcher.lock().unwrap_or_else(|e| e.into_inner()).reset();
-            if !events.is_empty() {
-                let _ = tx.send(RawKey {
-                    key: Key::Ctrl,
-                    down: false,
-                    t_ms: 0,
-                    events,
-                });
-            }
-            note_event();
-            post_rehook(thread_id);
-            last_rehook = now;
-            continue;
+            stale_since = None;
         }
         let any_mod = [Key::Ctrl, Key::Win, Key::Alt, Key::Shift]
             .into_iter()
             .any(key_is_down);
+        let since = now.duration_since(last_rehook);
         if gap >= STALL_GAP
-            || periodic_rehook_due(now.duration_since(last_rehook), any_mod)
-            || (!HOOK_INSTALLED.load(Ordering::Relaxed) && !any_mod)
+            || periodic_rehook_due(since, any_mod)
+            || (!HOOK_INSTALLED.load(Ordering::Relaxed) && !any_mod && since >= RETRY_REHOOK)
         {
             post_rehook(thread_id);
             last_rehook = now;
@@ -378,6 +430,31 @@ fn watchdog(
     }
 }
 
+/// Release matcher keys that are physically up (never `reset`: that would cancel a live
+/// dictation) and forward the resulting events, e.g. `Released` so a recording finishes.
+fn resync(tx: &Sender<RawKey>) {
+    let (events, mask) = {
+        let mut g = lock_ctx();
+        let Some(ctx) = g.as_mut() else {
+            return;
+        };
+        let t_ms = ctx.clock.now();
+        let mut m = ctx.matcher.lock().unwrap_or_else(|e| e.into_inner());
+        let ev = m.prune(key_is_down, t_ms);
+        (ev, m.take_mask_request() || m.mask_before_up())
+    };
+    if !events.is_empty() {
+        let _ = tx.send(RawKey {
+            key: Key::Ctrl,
+            down: false,
+            t_ms: 0,
+            events,
+        });
+    }
+    if mask {
+        send_mask_key();
+    }
+}
 /// Capture mode for the shortcut recorder: swallows keys pressed from now on (so nothing fires or
 /// reaches apps) until the first of them is released, and returns everything held at that moment.
 /// Keys already down when capture starts are never swallowed on release.
@@ -598,17 +675,40 @@ mod tests {
     fn rehook_needs_a_long_hold_and_a_silent_hook() {
         let ms = Duration::from_millis;
         // Not held, or held briefly: never.
-        assert!(!should_rehook(None, ms(60_000)));
-        assert!(!should_rehook(Some(ms(399)), ms(60_000)));
+        assert!(!should_rehook(None, ms(60_000), false));
+        assert!(!should_rehook(Some(ms(399)), ms(60_000), false));
         // Held long, hook saw the key-down (event age ~ hold time): healthy.
-        assert!(!should_rehook(Some(ms(400)), ms(450)));
-        assert!(!should_rehook(Some(ms(5_000)), ms(5_100)));
-        assert!(!should_rehook(Some(ms(500)), ms(10)));
+        assert!(!should_rehook(Some(ms(400)), ms(450), false));
+        assert!(!should_rehook(Some(ms(5_000)), ms(5_100), false));
+        assert!(!should_rehook(Some(ms(500)), ms(10), false));
         // Held long, hook silent since long before the hold began: dead.
-        assert!(should_rehook(Some(ms(400)), ms(2_000)));
-        assert!(should_rehook(Some(ms(450)), ms(10_000)));
+        assert!(should_rehook(Some(ms(400)), ms(2_000), false));
+        assert!(should_rehook(Some(ms(450)), ms(10_000), false));
     }
 
+    #[test]
+    fn never_rehook_when_matcher_already_holds_the_chord() {
+        let ms = Duration::from_millis;
+        assert!(!should_rehook(Some(ms(2_000)), ms(60_000), true));
+    }
+
+    #[test]
+    fn resync_needs_stale_keys_and_a_silent_hook() {
+        let ms = Duration::from_millis;
+        assert!(!should_resync(None, ms(60_000)));
+        assert!(!should_resync(Some(ms(299)), ms(60_000)));
+        assert!(!should_resync(Some(ms(500)), ms(100))); // hook delivered something since
+        assert!(should_resync(Some(ms(300)), ms(5_000)));
+    }
+
+    #[test]
+    fn late_ticks_are_not_usable() {
+        let ms = Duration::from_millis;
+        assert!(tick_usable(ms(100)));
+        assert!(tick_usable(ms(300)));
+        assert!(!tick_usable(ms(301)));
+        assert!(!tick_usable(ms(2_000)));
+    }
     #[test]
     fn periodic_rehook_waits_for_idle_keys() {
         assert!(!periodic_rehook_due(Duration::from_secs(59), false));

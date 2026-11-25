@@ -70,9 +70,19 @@ struct Active {
     suppress_release: bool,
 }
 
+/// See [Matcher::watch_state].
+#[derive(Debug, Default, Clone, Copy, PartialEq, Eq)]
+pub struct WatchState {
+    pub chord_down: bool,
+    pub chord_seen: bool,
+    pub stale_held: bool,
+}
+
 #[derive(Debug)]
 pub struct Matcher {
     bindings: Vec<Binding>,
+    /// Key sets of the bound modifier-only chords (cached for the hook watchdog).
+    modifier_chords: Vec<Vec<Key>>,
     held: BTreeSet<Key>,
     active: Option<Active>,
     /// After a cancel/release with keys still down, nothing re-arms until all keys are up.
@@ -91,8 +101,14 @@ pub struct Matcher {
 
 impl Matcher {
     pub fn new(bindings: Vec<Binding>) -> Self {
+        let modifier_chords = bindings
+            .iter()
+            .filter(|b| b.chord.is_modifier_only() && !b.chord.keys().is_empty())
+            .map(|b| b.chord.keys().iter().copied().collect())
+            .collect();
         Matcher {
             bindings,
+            modifier_chords,
             held: BTreeSet::new(),
             active: None,
             dirty: false,
@@ -106,15 +122,22 @@ impl Matcher {
         }
     }
 
-    /// Key sets of every bound modifier-only chord (e.g. Ctrl+Win), for the hook watchdog.
-    pub fn modifier_only_chords(&self) -> Vec<Vec<Key>> {
-        self.bindings
-            .iter()
-            .filter(|b| b.chord.is_modifier_only())
-            .map(|b| b.chord.keys().iter().copied().collect())
-            .collect()
+    /// Watchdog snapshot (no allocation): is a bound modifier-only chord physically down
+    /// (`is_down`), does this matcher already hold all its keys (so the hook saw the press), and
+    /// does it hold any key that is physically up (a missed key-up).
+    pub fn watch_state(&self, is_down: impl Fn(Key) -> bool) -> WatchState {
+        let mut s = WatchState::default();
+        for c in &self.modifier_chords {
+            if c.iter().all(|&k| is_down(k)) {
+                s.chord_down = true;
+                if c.iter().all(|k| self.held.contains(k)) {
+                    s.chord_seen = true;
+                }
+            }
+        }
+        s.stale_held = self.held.iter().any(|&k| !is_down(k));
+        s
     }
-
     /// Replace bindings (settings changed). Drops all in-flight state.
     pub fn set_bindings(&mut self, bindings: Vec<Binding>) {
         let recording = self.recording;
@@ -791,5 +814,24 @@ mod tests {
         }]);
         dn(&mut m, CTRL, 0);
         assert_eq!(dn(&mut m, ALT, 5), vec![Pressed(Action::Dictate)]);
+    }
+
+    #[test]
+    fn watch_state_reports_seen_chord_and_stale_keys() {
+        let mut m = m();
+        let all_up = |_: Key| false;
+        assert_eq!(m.watch_state(all_up), WatchState::default());
+        // Chord physically down but the matcher never saw it: hook presumed dead.
+        let down = |k: Key| k == CTRL || k == WIN;
+        let s = m.watch_state(down);
+        assert!(s.chord_down && !s.chord_seen && !s.stale_held);
+        // Matcher saw the press: alive.
+        dn(&mut m, CTRL, 0);
+        dn(&mut m, WIN, 10);
+        let s = m.watch_state(down);
+        assert!(s.chord_down && s.chord_seen && !s.stale_held);
+        // Keys released physically but the matcher still holds them: missed key-up.
+        let s = m.watch_state(all_up);
+        assert!(!s.chord_down && s.stale_held);
     }
 }

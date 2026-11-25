@@ -474,7 +474,7 @@ impl Worker {
                     Some(&samples),
                 );
                 if copied_only {
-                    self.copy_only(&r.text);
+                    self.copy_only(&r.text, mode_s);
                 } else if pasted.is_ok() {
                     st.set_pill_timed(PillKind::Done, mode_s, None, 900);
                 } else {
@@ -607,14 +607,14 @@ impl Worker {
             PasteLastPlan::Refocus(h) => {
                 // Our tray/hub has focus: hand it back to the window the user was in.
                 if !focus_window(h) {
-                    self.copy_only(&text);
+                    self.copy_only(&text, "dictate");
                     return;
                 }
                 std::thread::sleep(Duration::from_millis(80));
                 foreground_app().map(|a| a.process).unwrap_or_default()
             }
             PasteLastPlan::ClipboardOnly => {
-                self.copy_only(&text);
+                self.copy_only(&text, "dictate");
                 return;
             }
         };
@@ -625,11 +625,11 @@ impl Worker {
     }
 
     /// No window to paste into: leave the text on the clipboard and say so.
-    fn copy_only(&self, text: &str) {
+    fn copy_only(&self, text: &str, mode: &str) {
         copy_text(text);
         self.st.set_pill_timed(
             PillKind::Done,
-            "dictate",
+            mode,
             Some("Copied \u{2014} press Ctrl+V".into()),
             2500,
         );

@@ -377,10 +377,12 @@ where
             let _ = data_tx.send(Cmd::Chunk(generation, dsp::to_mono(&f, channels)));
         },
         move |e| {
-            log::warn!("audio: stream error: {e}");
             // Xruns and route changes leave the stream running (chunks keep flowing). Anything
             // else (device unplugged etc.): keep what we have; next start() reopens.
-            if !is_transient(e.kind(), &e.to_string()) {
+            if is_transient(e.kind(), &e.to_string()) {
+                log::debug!("audio: transient stream error: {e}");
+            } else {
+                log::warn!("audio: stream error: {e}");
                 let _ = err_tx.send(Cmd::StreamError(generation));
             }
         },
