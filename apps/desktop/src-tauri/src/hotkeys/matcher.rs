@@ -135,9 +135,23 @@ impl Matcher {
                 }
             }
         }
-        s.stale_held = self.held.iter().any(|&k| !is_down(k));
+        // Keys our hook swallows never reach the async key state: they look up while held.
+        s.stale_held = self
+            .held
+            .iter()
+            .any(|k| !self.swallowed.contains(k) && !is_down(*k));
         s
     }
+
+    /// Watchdog resync after a missed key-up: like prune, but swallowed keys count as down,
+    /// and the release is not remembered for double-tap detection.
+    pub fn resync(&mut self, is_down: impl Fn(Key) -> bool, t_ms: u64) -> Vec<HotkeyEvent> {
+        let swallowed = self.swallowed.clone();
+        let ev = self.prune(|k| swallowed.contains(&k) || is_down(k), t_ms);
+        self.last_dictate_release = None;
+        ev
+    }
+
     /// Replace bindings (settings changed). Drops all in-flight state.
     pub fn set_bindings(&mut self, bindings: Vec<Binding>) {
         let recording = self.recording;
@@ -833,5 +847,28 @@ mod tests {
         // Keys released physically but the matcher still holds them: missed key-up.
         let s = m.watch_state(all_up);
         assert!(!s.chord_down && s.stale_held);
+    }
+
+    #[test]
+    fn swallowed_held_key_is_not_stale_and_resync_keeps_it() {
+        // Dictate bound to Ctrl+Space (hold): Space is swallowed, so GetAsyncKeyState says up.
+        let mut m = Matcher::new(vec![Binding {
+            action: Action::Dictate,
+            chord: Chord::parse("Ctrl+Space").unwrap(),
+            trigger: Trigger::Hold,
+        }]);
+        let space = Key::Vk(0x20);
+        dn(&mut m, CTRL, 0);
+        dn(&mut m, space, 10);
+        let ctrl_only = |k: Key| k == CTRL;
+        assert!(m.should_swallow(space, true));
+        assert!(!m.watch_state(ctrl_only).stale_held);
+        assert!(m.resync(ctrl_only, 900).is_empty());
+        // Ctrl physically released while still held in the matcher: stale, and resync releases.
+        assert!(m.watch_state(|_| false).stale_held);
+        assert_eq!(
+            m.resync(|_| false, 1000),
+            vec![HotkeyEvent::Released(Action::Dictate)]
+        );
     }
 }

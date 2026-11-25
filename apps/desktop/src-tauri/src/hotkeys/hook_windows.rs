@@ -71,6 +71,10 @@ fn note_event() {
     LAST_EVENT_MS.store(epoch().elapsed().as_millis() as u64, Ordering::Relaxed);
 }
 
+fn last_event_stamp() -> u64 {
+    LAST_EVENT_MS.load(Ordering::Relaxed)
+}
+
 fn last_event_age() -> Duration {
     let now = epoch().elapsed().as_millis() as u64;
     Duration::from_millis(now.saturating_sub(LAST_EVENT_MS.load(Ordering::Relaxed)))
@@ -95,8 +99,8 @@ pub fn should_rehook(
 
 /// The matcher holds keys that have been physically up for a while and the hook has delivered
 /// nothing since: a key-up was missed (hook removed mid-hold).
-pub fn should_resync(stale_for: Option<Duration>, last_event_age: Duration) -> bool {
-    matches!(stale_for, Some(s) if s >= STALE_THRESHOLD && last_event_age > s)
+pub fn should_resync(stale_for: Option<Duration>, events_since_first_seen: bool) -> bool {
+    matches!(stale_for, Some(s) if s >= STALE_THRESHOLD) && !events_since_first_seen
 }
 
 /// Ticks much later than the poll interval (CPU starvation, sleep) give unreliable timing:
@@ -366,7 +370,8 @@ fn watchdog(
     stop: Arc<AtomicBool>,
 ) {
     let mut held_since: Option<Instant> = None;
-    let mut stale_since: Option<Instant> = None;
+    // When the matcher first looked stale, plus the hook's last-event stamp at that moment.
+    let mut stale_since: Option<(Instant, u64)> = None;
     let mut last_rehook = Instant::now();
     let mut last_tick = Instant::now();
     while !stop.load(Ordering::Relaxed) {
@@ -375,10 +380,25 @@ fn watchdog(
         let prev_tick = last_tick;
         let gap = now.duration_since(prev_tick);
         last_tick = now;
+        // Modifier states are read before taking the lock; only non-modifier keys are queried
+        // under it.
+        let mods = [
+            key_is_down(Key::Ctrl),
+            key_is_down(Key::Win),
+            key_is_down(Key::Alt),
+            key_is_down(Key::Shift),
+        ];
+        let lookup = |k: Key| match k {
+            Key::Ctrl => mods[0],
+            Key::Win => mods[1],
+            Key::Alt => mods[2],
+            Key::Shift => mods[3],
+            Key::Vk(_) => key_is_down(k),
+        };
         let ws = matcher
             .lock()
             .unwrap_or_else(|e| e.into_inner())
-            .watch_state(key_is_down);
+            .watch_state(lookup);
         if tick_usable(gap) {
             // The previous tick is the earliest moment a new hold/stale state can have begun
             // (it was not observed then), so it is the conservative start.
@@ -388,10 +408,16 @@ fn watchdog(
                 None
             };
             stale_since = if ws.stale_held {
-                stale_since.or(Some(prev_tick))
+                stale_since.or(Some((prev_tick, last_event_stamp())))
             } else {
                 None
             };
+            let stale_for = stale_since.map(|(s, _)| now.duration_since(s));
+            let events_since = stale_since.is_some_and(|(_, st)| st != last_event_stamp());
+            if events_since {
+                // The hook is alive: start observing afresh.
+                stale_since = Some((now, last_event_stamp()));
+            }
             let age = last_event_age();
             if should_rehook(
                 held_since.map(|s| now.duration_since(s)),
@@ -404,9 +430,9 @@ fn watchdog(
                 last_rehook = now;
                 continue;
             }
-            if should_resync(stale_since.map(|s| now.duration_since(s)), age) {
+            if should_resync(stale_for, events_since) {
                 log::warn!("keyboard hook missed a key release; resynced and reinstalled");
-                resync(&tx);
+                resync(&tx, stale_for.unwrap_or_default());
                 post_rehook(thread_id);
                 last_rehook = now;
                 stale_since = None;
@@ -432,15 +458,20 @@ fn watchdog(
 
 /// Release matcher keys that are physically up (never `reset`: that would cancel a live
 /// dictation) and forward the resulting events, e.g. `Released` so a recording finishes.
-fn resync(tx: &Sender<RawKey>) {
+fn resync(tx: &Sender<RawKey>, stale_for: Duration) {
     let (events, mask) = {
         let mut g = lock_ctx();
         let Some(ctx) = g.as_mut() else {
             return;
         };
-        let t_ms = ctx.clock.now();
+        // Stamp the release at its estimated onset, never before the last real event.
+        let t_ms = ctx
+            .clock
+            .now()
+            .saturating_sub(stale_for.as_millis() as u64)
+            .max(ctx.clock.t);
         let mut m = ctx.matcher.lock().unwrap_or_else(|e| e.into_inner());
-        let ev = m.prune(key_is_down, t_ms);
+        let ev = m.resync(key_is_down, t_ms);
         (ev, m.take_mask_request() || m.mask_before_up())
     };
     if !events.is_empty() {
@@ -695,12 +726,11 @@ mod tests {
     #[test]
     fn resync_needs_stale_keys_and_a_silent_hook() {
         let ms = Duration::from_millis;
-        assert!(!should_resync(None, ms(60_000)));
-        assert!(!should_resync(Some(ms(299)), ms(60_000)));
-        assert!(!should_resync(Some(ms(500)), ms(100))); // hook delivered something since
-        assert!(should_resync(Some(ms(300)), ms(5_000)));
+        assert!(!should_resync(None, false));
+        assert!(!should_resync(Some(ms(299)), false));
+        assert!(!should_resync(Some(ms(500)), true)); // hook delivered something since
+        assert!(should_resync(Some(ms(300)), false));
     }
-
     #[test]
     fn late_ticks_are_not_usable() {
         let ms = Duration::from_millis;
