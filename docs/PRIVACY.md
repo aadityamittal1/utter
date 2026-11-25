@@ -5,9 +5,9 @@ Audio stays on your PC. Only the text goes to Claude, and only if you add a key.
 ## What stays on your PC
 
 - **Audio.** Recording and speech recognition (whisper.cpp) happen locally. Audio is never uploaded anywhere.
-- **History, dictionary, snippets, notes, transforms, stats.** Stored in a local SQLite database under `%APPDATA%\dev.utter.app`.
+- **History, dictionary, snippets, notes, transforms, stats.** Stored in a local SQLite database under `%APPDATA%\dev.utter.desktop`.
 - **Settings.** A local JSON file. It never contains your API key.
-- **Your API key.** Stored in Windows Credential Manager (service `dev.utter.app`, user `anthropic_api_key`). It is never written to settings, logs or error messages.
+- **Your API key.** Stored in Windows Credential Manager (service `dev.utter.desktop`, user `anthropic_api_key`). It is never written to settings, logs or error messages.
 
 ## What leaves your PC
 
@@ -24,15 +24,17 @@ Anthropic's handling of API data is governed by their own terms and privacy poli
 
 ## Context awareness
 
-At the start of a dictation Utter reads the foreground app's process name and window title to pick a style (email, chat, code...). It does not take screenshots or read other fields. The app name is sent to Claude as context. Turn this off in Settings, Privacy.
+At the start of a dictation Utter reads the foreground app's process name and window title to pick a style (email, chat, code...). It does not take screenshots or read other fields. With context awareness on, the app name is sent to Claude as context; with it off, no app name is sent. Turn this off in Settings, Privacy.
+
+If you set your name, it is sent to Claude only for Email enhance sign-offs.
 
 ## Your controls
 
 - **History retention**: forever, 24 hours, or never.
-- **Saved audio**: recordings are kept locally for 14 days by default so you can replay or retry them; turn this off in Settings, Privacy.
+- **Saved audio**: recordings are kept locally for at most 14 days (deleted automatically) so you can replay or retry them; turn this off in Settings, Privacy.
 - **No key**: with no API key Utter makes no network calls except model downloads.
 - **Delete**: remove single history items, clear all history, or delete downloaded models.
-- **Uninstall**: removes the app; delete `%APPDATA%\dev.utter.app` and the Credential Manager entry for a full clean-up.
+- **Uninstall**: removes the app; delete `%APPDATA%\dev.utter.desktop` and the Credential Manager entry for a full clean-up.
 
 ## Fallback behavior
 

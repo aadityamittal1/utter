@@ -1,5 +1,5 @@
 //! Integration tests for the whisper engine. Ignored by default: they need a
-//! downloaded model (`%APPDATA%/dev.utter.app/models/ggml-base.bin`).
+//! downloaded model (`%APPDATA%/dev.utter.desktop/models/ggml-base.bin`).
 use std::path::PathBuf;
 
 use utter_lib::stt::engine::{SttOptions, WhisperEngine};
@@ -17,7 +17,7 @@ fn read_wav(name: &str) -> Vec<f32> {
 
 fn engine() -> WhisperEngine {
     let dir =
-        PathBuf::from(std::env::var("APPDATA").expect("APPDATA")).join("dev.utter.app/models");
+        PathBuf::from(std::env::var("APPDATA").expect("APPDATA")).join("dev.utter.desktop/models");
     WhisperEngine::load(&dir.join("ggml-base.bin")).expect("model present (download base first)")
 }
 

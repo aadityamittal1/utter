@@ -89,7 +89,7 @@ Reproduce:
 
 ```
 cd apps/desktop/src-tauri
-cargo run --release --example bench -- "%APPDATA%\dev.utter.app\models\ggml-base.bin" tests\fixtures\ten_seconds.wav
+cargo run --release --example bench -- "%APPDATA%\dev.utter.desktop\models\ggml-base.bin" tests\fixtures\ten_seconds.wav
 ```
 
 Notes from the emulated run:

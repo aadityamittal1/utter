@@ -4,7 +4,7 @@
 //! `cargo test --lib wav_to_notepad -- --ignored --nocapture`
 //!
 //! Needs a downloaded Whisper model (`UTTER_TEST_MODEL` = path, else the app's default model in
-//! `%APPDATA%\dev.utter.app\models`). Set `UTTER_TEST_API_KEY` to also exercise the Claude route.
+//! `%APPDATA%\dev.utter.desktop\models`). Set `UTTER_TEST_API_KEY` to also exercise the Claude route.
 //!
 //! Safety: refuses to run if any Notepad window already exists, uses a temp file, checks the
 //! window title before pasting, and only kills the Notepad process it started.
@@ -137,7 +137,7 @@ fn model_path() -> PathBuf {
     }
     let appdata = std::env::var("APPDATA").expect("APPDATA");
     catalog::model_path(
-        &Path::new(&appdata).join("dev.utter.app").join("models"),
+        &Path::new(&appdata).join("dev.utter.desktop").join("models"),
         catalog::default_model_id(),
     )
 }

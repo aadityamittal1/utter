@@ -6,7 +6,7 @@ Utter is a free, open source dictation app for Windows. You hold a key, speak, a
 
 ## Name and tagline
 
-- Name: **Utter** (capital U in prose, `utter` lowercase only in the wordmark). Product name `Utter`, identifier `dev.utter.app`.
+- Name: **Utter** (capital U in prose, `utter` lowercase only in the wordmark). Product name `Utter`, identifier `dev.utter.desktop`.
 - Tagline: **Speak anywhere. Utter writes it.** Use it verbatim, with both full stops.
 - Descriptor: "Free, open source dictation for Windows."
 - Attribution: where the AI step needs crediting, write exactly **Powered by Claude Haiku**. Nothing more. Utter never uses another company's logo, colours or phrasing, and says nothing about being affiliated with anyone.

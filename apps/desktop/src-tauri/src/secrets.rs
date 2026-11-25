@@ -3,7 +3,7 @@
 
 use anyhow::{anyhow, Result};
 
-const SERVICE: &str = "dev.utter.app";
+const SERVICE: &str = "dev.utter.desktop";
 const USER: &str = "anthropic_api_key";
 
 fn entry() -> keyring::Result<keyring::Entry> {
