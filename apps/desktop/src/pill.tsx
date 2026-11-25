@@ -1,25 +1,26 @@
-import { StrictMode, useState } from "react";
+import { StrictMode, lazy, Suspense } from "react";
 import { createRoot } from "react-dom/client";
 import "./styles/global.css";
-import { useBackendEvent } from "./lib/useBackendEvent";
-import type { PillState } from "./lib/types";
-
-// Placeholder: the pill task replaces ./pill/Pill.tsx and ./pill/Bars.tsx.
-function PillPlaceholder() {
-  const [state, setState] = useState<PillState>({ state: "idle", mode: "dictate", elapsedMs: 0 });
-  useBackendEvent("pill://state", setState);
-  return (
-    <div className="flex h-full items-center justify-center">
-      <div className="rounded-full bg-[var(--ink)] px-4 py-1.5 text-xs text-[var(--paper)]">{state.message ?? state.state}</div>
-    </div>
-  );
-}
+import { Pill } from "./pill/Pill";
 
 // The pill window is transparent; only the capsule is painted.
+document.documentElement.style.background = "transparent";
 document.body.style.background = "transparent";
+
+// Dev-only: pill.html?pill-harness shows every state side by side.
+const Harness = import.meta.env.DEV
+  ? lazy(() => import("./pill/Harness").then((m) => ({ default: m.Harness })))
+  : null;
+const harness = Harness !== null && new URLSearchParams(location.search).has("pill-harness");
 
 createRoot(document.getElementById("root")!).render(
   <StrictMode>
-    <PillPlaceholder />
+    {harness && Harness ? (
+      <Suspense fallback={null}>
+        <Harness />
+      </Suspense>
+    ) : (
+      <Pill />
+    )}
   </StrictMode>,
 );
