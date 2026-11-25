@@ -26,6 +26,8 @@ Anthropic's handling of API data is governed by their own terms and privacy poli
 
 At the start of a dictation Utter reads the foreground app's process name and window title to pick a style (email, chat, code...). It does not take screenshots or read other fields. With context awareness on, the app name is sent to Claude as context; with it off, no app name is sent. Turn this off in Settings, Privacy.
 
+Separately, every 400 ms Utter checks which window is in the foreground so that tray actions such as Paste last can hand focus back to the window you were using. It keeps only that window handle, in memory on your PC; no title, process name or text is stored or sent anywhere.
+
 If you set your name, it is sent to Claude only for Email enhance sign-offs.
 
 ## Your controls
