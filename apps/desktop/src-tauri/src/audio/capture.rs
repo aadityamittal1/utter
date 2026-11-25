@@ -336,6 +336,26 @@ fn build_stream(
     Ok((stream, rate))
 }
 
+/// Stream errors that do not stop the stream: buffer under/overruns, route changes, refused
+/// realtime priority. Device-lost errors are not transient.
+fn is_transient(kind: cpal::ErrorKind, text: &str) -> bool {
+    use cpal::ErrorKind;
+    if matches!(
+        kind,
+        ErrorKind::Xrun | ErrorKind::DeviceChanged | ErrorKind::RealtimeDenied
+    ) {
+        return true;
+    }
+    if matches!(
+        kind,
+        ErrorKind::DeviceNotAvailable | ErrorKind::StreamInvalidated
+    ) {
+        return false;
+    }
+    let t = text.to_ascii_lowercase();
+    t.contains("underrun") || t.contains("overrun")
+}
+
 fn build_typed<T>(
     dev: &cpal::Device,
     cfg: cpal::StreamConfig,
@@ -357,9 +377,12 @@ where
             let _ = data_tx.send(Cmd::Chunk(generation, dsp::to_mono(&f, channels)));
         },
         move |e| {
-            // Device unplugged etc.: keep what we have; next start() reopens.
-            log::error!("audio: stream error: {e}");
-            let _ = err_tx.send(Cmd::StreamError(generation));
+            log::warn!("audio: stream error: {e}");
+            // Xruns and route changes leave the stream running (chunks keep flowing). Anything
+            // else (device unplugged etc.): keep what we have; next start() reopens.
+            if !is_transient(e.kind(), &e.to_string()) {
+                let _ = err_tx.send(Cmd::StreamError(generation));
+            }
         },
         None,
     )?;
@@ -374,6 +397,20 @@ mod tests {
     fn recorder_is_send_sync() {
         fn assert<T: Send + Sync>() {}
         assert::<Recorder>();
+    }
+
+    #[test]
+    fn xruns_are_transient_device_loss_is_not() {
+        use cpal::ErrorKind;
+        assert!(is_transient(ErrorKind::Xrun, "x"));
+        assert!(is_transient(
+            ErrorKind::BackendError,
+            "Buffer Underrun happened"
+        ));
+        assert!(is_transient(ErrorKind::Other, "overrun"));
+        assert!(!is_transient(ErrorKind::DeviceNotAvailable, "gone"));
+        assert!(!is_transient(ErrorKind::DeviceNotAvailable, "underrun"));
+        assert!(!is_transient(ErrorKind::BackendError, "something else"));
     }
 
     #[test]
