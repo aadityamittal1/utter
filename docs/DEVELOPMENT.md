@@ -35,4 +35,26 @@ The x64 toolchain loads an x64 `libclang.dll`: point `LIBCLANG_PATH` at an x64 L
 
 ## Benchmarks
 
-(Filled in by the speech engine task.)
+Speech engine (`apps/desktop/src-tauri/examples/bench.rs`), `ten_seconds.wav` (11.6 s of synthetic speech from `scripts/make-test-audio.ps1`), greedy decoding, English, 4 threads, release build.
+
+Machine: Snapdragon X (X1P64100, 10 cores) laptop, Windows 11 ARM64, **x64 build running under emulation** (the native ARM64 MSVC component was not installed). These numbers are therefore pessimistic and are to be re-run natively.
+
+| Model | Load | Transcribe (11.6 s clip) |
+|---|---|---|
+| `base` (`ggml-base.bin`, 148 MB) | ~350-430 ms | 3.7-3.9 s (2 runs) |
+| `small-q5_1` (`ggml-small-q5_1.bin`, 190 MB) | ~420 ms | 14.0-15.0 s (2 runs) |
+
+Rule: default is `small-q5_1` if its 10 s transcribe is <= 1500 ms, else `base`. `small-q5_1` was far over the bar here, so the default is **`base`**. Re-run natively on ARM64 and revisit.
+
+Reproduce:
+
+```
+cd apps/desktop/src-tauri
+cargo run --release --example bench -- "%APPDATA%\dev.utter.app\models\ggml-base.bin" testsixtures	en_seconds.wav
+```
+
+Notes from the emulated run:
+
+- Thread count matters enormously: with 6 or more threads whisper.cpp was 50x+ slower than with 4 (spin-wait contention under emulation). The engine therefore defaults to `min(cores, 4)` threads; set `UTTER_THREADS=<n>` to override while benchmarking.
+- The release numbers above were measured with whisper-rs-sys built with extra CMake env vars (`CMAKE_C_FLAGS_RELEASE=CMAKE_CXX_FLAGS_RELEASE="/O2 /Ob2 /DNDEBUG /MD"`, `GGML_AVX=GGML_AVX2=GGML_FMA=GGML_F16C=ON`). They are probably unnecessary: the ignored `transcribe` test, built with the default flags in the debug profile (which uses `RelWithDebInfo`), transcribed `hello.wav` in 3.9 s total at 4 threads. The thread count was the real problem. Run `cargo clean -p whisper-rs-sys` after changing such variables.
+- `tests/transcribe.rs` (ignored by default) needs `ggml-base.bin` downloaded: `cargo test --test transcribe -- --ignored`.
