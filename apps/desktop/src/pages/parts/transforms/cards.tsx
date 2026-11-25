@@ -4,8 +4,8 @@ import { Button, Card, Chord, Input, ShortcutRecorder, Textarea } from "../../..
 import { ipc } from "../../../lib/ipc";
 import { toast } from "../../../lib/store";
 import type { Transform } from "../../../lib/types";
+import { errText } from "../dictionary/useLoader";
 
-export const errText = (e: unknown) => (typeof e === "string" ? e : e instanceof Error ? e.message : "Something went wrong");
 
 export function ShortcutField({ value, onChange, label }: { value: string | undefined; onChange: (v: string | undefined) => void; label: string }) {
   return (

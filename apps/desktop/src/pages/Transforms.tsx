@@ -5,8 +5,8 @@ import { ipc } from "../lib/ipc";
 import { formatChord } from "../lib/format";
 import { toast, useSettings } from "../lib/store";
 import type { Transform } from "../lib/types";
-import { useLoader } from "./parts/dictionary/useLoader";
-import { BuiltinCard, CustomCard, errText, ExplainerCard } from "./parts/transforms/cards";
+import { errText, useLoader } from "./parts/dictionary/useLoader";
+import { BuiltinCard, CustomCard, ExplainerCard } from "./parts/transforms/cards";
 
 const MAX_CUSTOM = 8;
 

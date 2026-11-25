@@ -2,6 +2,7 @@ import { useState } from "react";
 import { Button, Input, Textarea } from "../../../components/ui";
 import { ipc } from "../../../lib/ipc";
 import type { Snippet } from "../../../lib/types";
+import { errText } from "../dictionary/useLoader";
 import { Modal } from "./Modal";
 import { EXPANSION_MAX, TRIGGER_MAX, validateSnippet } from "./presets";
 
@@ -12,9 +13,8 @@ export interface SnippetDraft {
   placeholder?: string;
 }
 
-const errText = (e: unknown) => (typeof e === "string" ? e : e instanceof Error ? e.message : "Couldn't save the snippet");
 
-export function SnippetModal({ draft, onClose, onSaved }: { draft: SnippetDraft; onClose: () => void; onSaved: () => void }) {
+export function SnippetModal({ draft, onClose, onSaved }: { draft: SnippetDraft; onClose: () => void; onSaved: () => void | Promise<void> }) {
   const [trigger, setTrigger] = useState(draft.trigger);
   const [expansion, setExpansion] = useState(draft.expansion);
   const [error, setError] = useState<string | null>(null);
@@ -27,9 +27,9 @@ export function SnippetModal({ draft, onClose, onSaved }: { draft: SnippetDraft;
     try {
       if (draft.id) await ipc.snippetsUpdate({ id: draft.id, trigger: trigger.trim(), expansion } satisfies Snippet);
       else await ipc.snippetsAdd(trigger.trim(), expansion);
-      onSaved();
+      await onSaved();
     } catch (e) {
-      setError(errText(e));
+      setError(errText(e, "Couldn't save the snippet"));
       setBusy(false);
     }
   };

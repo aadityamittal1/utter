@@ -6,11 +6,9 @@ import { relativeDay } from "../lib/format";
 import { ipc } from "../lib/ipc";
 import { toast, useSettings } from "../lib/store";
 import type { Note } from "../lib/types";
-import { useLoader } from "./parts/dictionary/useLoader";
+import { errText, useLoader } from "./parts/dictionary/useLoader";
 import { previewLine } from "./parts/notes/autosave";
 import { NoteEditor } from "./parts/notes/NoteEditor";
-
-const errText = (e: unknown) => (typeof e === "string" ? e : e instanceof Error ? e.message : "Something went wrong");
 
 export default function Notes() {
   const dictate = useSettings((s) => s.settings?.shortcuts.dictate?.[0]);
@@ -31,17 +29,7 @@ export default function Notes() {
     }
   };
 
-  const remove = async (id: string) => {
-    try {
-      await ipc.notesDelete(id);
-      setNotes((cur) => (cur ?? []).filter((n) => n.id !== id));
-      setSelected(null);
-    } catch (e) {
-      toast.error(errText(e));
-    }
-  };
-
-  // Keep list text in sync with saves without reordering under the user's cursor.
+  // Keep list text in sync with saves.
   const saved = useCallback((n: Note) => setNotes((cur) => cur?.map((x) => (x.id === n.id ? n : x)) ?? null), [setNotes]);
 
   const shown = useMemo(() => {
@@ -51,7 +39,21 @@ export default function Notes() {
     return q ? list.filter((n) => n.title.toLowerCase().includes(q) || n.body.toLowerCase().includes(q)) : list;
   }, [notes, query]);
 
-  const current = notes?.find((n) => n.id === selected) ?? notes?.[0] ?? null;
+  // Never show a note the list has filtered out.
+  const current = shown.find((n) => n.id === selected) ?? shown[0] ?? null;
+
+  /** Resolves true when deleted. Selection moves to the top note of what is shown. */
+  const remove = async (id: string): Promise<boolean> => {
+    try {
+      await ipc.notesDelete(id);
+    } catch (e) {
+      toast.error(errText(e));
+      return false;
+    }
+    setSelected(shown.find((n) => n.id !== id)?.id ?? null);
+    setNotes((cur) => (cur ?? []).filter((n) => n.id !== id));
+    return true;
+  };
 
   return (
     <div>
@@ -113,7 +115,7 @@ export default function Notes() {
           </div>
           <div className="min-h-0 min-w-0">
             {current ? (
-              <NoteEditor key={current.id} note={current} dictateChord={dictate} autoFocus={fresh === current.id} onSaved={saved} onDelete={() => void remove(current.id)} />
+              <NoteEditor key={current.id} note={current} dictateChord={dictate} autoFocus={fresh === current.id} onSaved={saved} onDelete={() => remove(current.id)} />
             ) : (
               <div className="flex h-full items-center justify-center text-sm text-muted">Pick a note, or start a new one.</div>
             )}

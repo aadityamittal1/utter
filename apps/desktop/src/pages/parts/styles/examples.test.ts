@@ -1,6 +1,6 @@
 import { describe, expect, it } from "vitest";
 import { CATEGORIES, STYLE_KINDS } from "../../../lib/types";
-import { allowedStyles, disabledReason, isStyleAllowed, renderExample } from "./examples";
+import { allowedStyles, disabledReason, isStyleAllowed, nextStyle, renderExample } from "./examples";
 
 describe("renderExample", () => {
   it("renders distinct text for every style", () => {
@@ -22,6 +22,17 @@ describe("renderExample", () => {
   it("omits the greeting name when the category has none", () => {
     expect(renderExample("formal", "aiPrompt")).toBe("Hello, could you please summarize this thread in three bullets? Thank you.");
   });
+});
+
+describe("nextStyle", () => {
+  it("moves and wraps, skipping unavailable styles", () => {
+    expect(nextStyle("email", "casual", "ArrowRight")).toBe("excited");
+    expect(nextStyle("email", "excited", "ArrowRight")).toBe("formal");
+    expect(nextStyle("email", "formal", "ArrowLeft")).toBe("excited");
+    expect(nextStyle("personalChat", "casual", "ArrowDown")).toBe("veryCasual");
+    expect(nextStyle("personalChat", "veryCasual", "ArrowDown")).toBe("formal");
+  });
+  it("ignores other keys", () => expect(nextStyle("email", "formal", "Tab")).toBeNull());
 });
 
 describe("style availability", () => {

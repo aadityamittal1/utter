@@ -50,6 +50,20 @@ export function allowedStyles(category: Category): StyleKind[] {
   return STYLE_KINDS.filter((s) => isStyleAllowed(category, s));
 }
 
+/**
+ * Arrow-key target within a category's radio group (wraps, skips unavailable styles).
+ * Returns null for any other key.
+ */
+export function nextStyle(category: Category, current: StyleKind, key: string): StyleKind | null {
+  const forward = key === "ArrowRight" || key === "ArrowDown";
+  const back = key === "ArrowLeft" || key === "ArrowUp";
+  if (!forward && !back) return null;
+  const list = allowedStyles(category);
+  const i = list.indexOf(current);
+  if (i < 0) return list[forward ? 0 : list.length - 1];
+  return list[(i + (forward ? 1 : -1) + list.length) % list.length];
+}
+
 /** Why a style is unavailable, or null when it is allowed. */
 export function disabledReason(category: Category, style: StyleKind): string | null {
   if (isStyleAllowed(category, style)) return null;

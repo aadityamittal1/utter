@@ -4,12 +4,12 @@ import { Button, EmptyState, IconButton, PageHeader, SkeletonRows } from "../com
 import { ipc } from "../lib/ipc";
 import { toast } from "../lib/store";
 import type { Snippet } from "../lib/types";
-import { useLoader } from "./parts/dictionary/useLoader";
+import { MODAL_FALLBACK_ATTR } from "./parts/snippets/Modal";
+import { errText, useLoader } from "./parts/dictionary/useLoader";
 import { downloadText, ImportButton } from "./parts/dictionary/fileio";
 import { availablePresets } from "./parts/snippets/presets";
 import { SnippetModal, type SnippetDraft } from "./parts/snippets/SnippetModal";
 
-const errText = (e: unknown) => (typeof e === "string" ? e : e instanceof Error ? e.message : "Something went wrong");
 
 export default function Snippets() {
   const { data: items, setData: setItems, error: loadError, reload: load } = useLoader<Snippet[]>(ipc.snippetsList);
@@ -28,7 +28,8 @@ export default function Snippets() {
   const importCsv = async (text: string) => {
     try {
       const n = await ipc.snippetsImportCsv(text);
-      toast.success(n === 1 ? "Imported 1 snippet" : `Imported ${n} snippets`);
+      if (n === 0) toast.info("No snippets found in that file. Use two columns: trigger, expansion.");
+      else toast.success(n === 1 ? "Imported 1 snippet" : `Imported ${n} snippets`);
       await load();
     } catch (e) {
       toast.error(errText(e));
@@ -43,7 +44,8 @@ export default function Snippets() {
     }
   };
 
-  const presets = useMemo(() => availablePresets((items ?? []).map((s) => s.trigger)), [items]);
+  // Only offer quick adds once we know which triggers already exist.
+  const presets = useMemo(() => (items ? availablePresets(items.map((s) => s.trigger)) : []), [items]);
   const shown = useMemo(() => {
     const q = query.trim().toLowerCase();
     if (!items) return [];
@@ -63,7 +65,7 @@ export default function Snippets() {
             <Button size="sm" icon={<Download size={14} />} onClick={exportCsv} disabled={!items?.length}>
               Export
             </Button>
-            <Button variant="primary" size="sm" icon={<Plus size={15} />} onClick={() => setDraft({ trigger: "", expansion: "" })}>
+            <Button variant="primary" size="sm" icon={<Plus size={15} />} {...{ [MODAL_FALLBACK_ATTR]: "" }} onClick={() => setDraft({ trigger: "", expansion: "" })}>
               New snippet
             </Button>
           </>
@@ -150,9 +152,10 @@ export default function Snippets() {
           key={draft.id ?? draft.trigger}
           draft={draft}
           onClose={() => setDraft(null)}
-          onSaved={() => {
+          onSaved={async () => {
+            // Refresh first, so the quick-add chip that opened this is gone before focus returns.
+            await load();
             setDraft(null);
-            void load();
           }}
         />
       )}

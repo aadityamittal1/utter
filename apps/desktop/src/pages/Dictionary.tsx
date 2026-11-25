@@ -4,11 +4,9 @@ import { Button, EmptyState, IconButton, Input, PageHeader, SkeletonRows, Switch
 import { ipc } from "../lib/ipc";
 import { toast } from "../lib/store";
 import type { DictEntry } from "../lib/types";
-import { useLoader } from "./parts/dictionary/useLoader";
+import { errText, useLoader } from "./parts/dictionary/useLoader";
 import { downloadText, ImportButton } from "./parts/dictionary/fileio";
-import { validateWord, WORD_MAX } from "./parts/dictionary/validate";
-
-const errText = (e: unknown) => (typeof e === "string" ? e : e instanceof Error ? e.message : "Something went wrong");
+import { countLabel, validateEntry, WORD_MAX, type EntryErrors } from "./parts/dictionary/validate";
 
 export default function Dictionary() {
   const { data: entries, setData: setEntries, error: loadError, reload: load } = useLoader<DictEntry[]>(ipc.dictionaryList);
@@ -16,21 +14,23 @@ export default function Dictionary() {
   const [word, setWord] = useState("");
   const [fix, setFix] = useState(false);
   const [heard, setHeard] = useState("");
-  const [error, setError] = useState<string | null>(null);
+  const [errs, setErrs] = useState<EntryErrors>({});
+  const [serverError, setServerError] = useState<string | null>(null);
   const [busy, setBusy] = useState(false);
 
   const add = async () => {
-    const v = validateWord(word, fix ? heard : "");
-    if (v) return setError(v);
+    const v = validateEntry(word, fix ? heard : "");
+    if (v.word || v.heardAs) return setErrs(v);
     setBusy(true);
     try {
       await ipc.dictionaryAdd(word.trim(), fix && heard.trim() ? heard.trim() : undefined);
       setWord("");
       setHeard("");
-      setError(null);
+      setErrs({});
+      setServerError(null);
       await load();
     } catch (e) {
-      setError(errText(e));
+      setServerError(errText(e)); // shown under the Word field
     } finally {
       setBusy(false);
     }
@@ -48,7 +48,8 @@ export default function Dictionary() {
   const importCsv = async (text: string) => {
     try {
       const n = await ipc.dictionaryImportCsv(text);
-      toast.success(n === 1 ? "Imported 1 word" : `Imported ${n} words`);
+      if (n === 0) toast.info("No words found in that file. Use two columns: word, heard as.");
+      else toast.success(n === 1 ? "Imported 1 word" : `Imported ${n} words`);
       await load();
     } catch (e) {
       toast.error(errText(e));
@@ -69,7 +70,13 @@ export default function Dictionary() {
     return q ? entries.filter((d) => d.word.toLowerCase().includes(q) || (d.heardAs ?? "").toLowerCase().includes(q)) : entries;
   }, [entries, query]);
 
-  const tooLong = word.trim().length > WORD_MAX;
+  const live = validateEntry(word, fix ? heard : "");
+  const wordError = serverError ?? (word.trim().length > WORD_MAX ? live.word : errs.word) ?? null;
+  const heardError = (heard.trim().length > WORD_MAX ? live.heardAs : errs.heardAs) ?? null;
+  const clearErrors = () => {
+    setErrs({});
+    setServerError(null);
+  };
 
   return (
     <div>
@@ -103,10 +110,10 @@ export default function Dictionary() {
             value={word}
             onChange={(e) => {
               setWord(e.target.value);
-              setError(null);
+              clearErrors();
             }}
-            helper={word.length > WORD_MAX - 15 ? `${word.trim().length}/${WORD_MAX}` : undefined}
-            error={tooLong ? `Keep it to ${WORD_MAX} characters or fewer (now ${word.trim().length}).` : error && !fix ? error : null}
+            helper={countLabel(word) ?? `Up to ${WORD_MAX} characters.`}
+            error={wordError}
           />
           <Button type="submit" variant="primary" className="mt-[26px]" loading={busy} disabled={!word.trim()}>
             Add word
@@ -125,10 +132,10 @@ export default function Dictionary() {
             value={heard}
             onChange={(e) => {
               setHeard(e.target.value);
-              setError(null);
+              clearErrors();
             }}
-            error={error && fix && !tooLong ? error : null}
-            helper="How the speech engine usually gets it wrong."
+            error={heardError}
+            helper={countLabel(heard) ?? "How the speech engine usually gets it wrong."}
           />
         )}
       </form>

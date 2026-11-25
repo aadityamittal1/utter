@@ -5,6 +5,7 @@ import { ipc } from "../../../lib/ipc";
 import { formatChord } from "../../../lib/format";
 import { toast } from "../../../lib/store";
 import type { Note } from "../../../lib/types";
+import { errText } from "../dictionary/useLoader";
 import { createAutosaver } from "./autosave";
 
 type Status = "saved" | "saving" | "error";
@@ -12,12 +13,27 @@ type Status = "saved" | "saving" | "error";
 /**
  * Edits one note. Mount it with `key={note.id}`: switching notes (or leaving
  * the page) unmounts it, and the cleanup flushes any pending edit first.
+ * `onDelete` resolves true when the note was deleted; on false the editor stays,
+ * keeping every edit.
  */
-export function NoteEditor({ note, dictateChord, autoFocus, onSaved, onDelete }: { note: Note; dictateChord: string | undefined; autoFocus: boolean; onSaved: (n: Note) => void; onDelete: () => void }) {
+export function NoteEditor({
+  note,
+  dictateChord,
+  autoFocus,
+  onSaved,
+  onDelete,
+}: {
+  note: Note;
+  dictateChord: string | undefined;
+  autoFocus: boolean;
+  onSaved: (n: Note) => void;
+  onDelete: () => Promise<boolean>;
+}) {
   const [title, setTitle] = useState(note.title);
   const [body, setBody] = useState(note.body);
   const [status, setStatus] = useState<Status>("saved");
   const [confirming, setConfirming] = useState(false);
+  const [deleting, setDeleting] = useState(false);
   const bodyRef = useRef<HTMLTextAreaElement>(null);
 
   const [saver] = useState(() =>
@@ -29,7 +45,8 @@ export function NoteEditor({ note, dictateChord, autoFocus, onSaved, onDelete }:
         setStatus("saved");
       } catch (e) {
         setStatus("error");
-        toast.error(typeof e === "string" ? e : "Couldn't save your note");
+        toast.error(errText(e, "Couldn't save your note"));
+        throw e; // keeps the edit pending for the next edit or flush
       }
     }, 500),
   );
@@ -47,6 +64,19 @@ export function NoteEditor({ note, dictateChord, autoFocus, onSaved, onDelete }:
     setBody(b);
     setStatus("saving");
     saver.schedule({ ...note, title: t, body: b });
+  };
+
+  const remove = async () => {
+    setDeleting(true);
+    await saver.flush(); // pending edit is saved before anything is removed
+    const ok = await onDelete();
+    if (ok) {
+      saver.cancel(); // only now is the edit meaningless
+      return;
+    }
+    setDeleting(false);
+    setConfirming(false);
+    setStatus(saver.hasPending() ? "error" : "saved");
   };
 
   const words = body.trim() ? body.trim().split(/\s+/).length : 0;
@@ -72,17 +102,10 @@ export function NoteEditor({ note, dictateChord, autoFocus, onSaved, onDelete }:
         </span>
         {confirming ? (
           <span className="flex shrink-0 items-center gap-1.5">
-            <Button
-              size="sm"
-              variant="danger"
-              onClick={() => {
-                saver.cancel();
-                onDelete();
-              }}
-            >
+            <Button size="sm" variant="danger" loading={deleting} onClick={() => void remove()}>
               Delete note
             </Button>
-            <Button size="sm" variant="ghost" onClick={() => setConfirming(false)}>
+            <Button size="sm" variant="ghost" disabled={deleting} onClick={() => setConfirming(false)}>
               Keep
             </Button>
           </span>
@@ -104,7 +127,9 @@ export function NoteEditor({ note, dictateChord, autoFocus, onSaved, onDelete }:
         <span className="flex items-center gap-1.5">
           Hold <Chord chord={formatChord(dictateChord)} /> to dictate here
         </span>
-        <span className="num">{words} {words === 1 ? "word" : "words"}</span>
+        <span className="num">
+          {words} {words === 1 ? "word" : "words"}
+        </span>
       </div>
     </div>
   );

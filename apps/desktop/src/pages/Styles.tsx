@@ -3,7 +3,7 @@ import { Card, PageHeader, Switch } from "../components/ui";
 import { cn } from "../lib/cn";
 import { useNav, useSettings } from "../lib/store";
 import { CATEGORIES, STYLE_KINDS, type Category, type CleanupLevel, type StyleKind } from "../lib/types";
-import { CATEGORY_HINTS, CATEGORY_LABELS, disabledReason, renderExample, STYLE_LABELS } from "./parts/styles/examples";
+import { allowedStyles, CATEGORY_HINTS, CATEGORY_LABELS, disabledReason, isStyleAllowed, nextStyle, renderExample, STYLE_LABELS } from "./parts/styles/examples";
 
 const CLEANUP: { value: CleanupLevel; label: string; help: string }[] = [
   { value: "off", label: "Off", help: "Your words exactly as heard. Nothing is removed or fixed." },
@@ -71,6 +71,7 @@ export default function Styles() {
         {CATEGORIES.map((cat) => {
           const selected = settings.styles[cat];
           const enhance = settings.autoEnhance.includes(cat);
+          const stop = isStyleAllowed(cat, selected) ? selected : allowedStyles(cat)[0]; // the one tab stop
           return (
             <Card key={cat} className="p-5">
               <div className="flex items-center justify-between gap-4">
@@ -85,15 +86,29 @@ export default function Styles() {
                 </label>
               </div>
 
-              <div role="radiogroup" aria-label={`${CATEGORY_LABELS[cat]} style`} className="mt-4 grid grid-cols-2 gap-2.5 lg:grid-cols-4">
+              <div
+                role="radiogroup"
+                aria-label={`${CATEGORY_LABELS[cat]} style`}
+                className="mt-4 grid grid-cols-2 gap-2.5 lg:grid-cols-4"
+                onKeyDown={(e) => {
+                  const next = nextStyle(cat, selected, e.key);
+                  if (!next) return;
+                  e.preventDefault();
+                  setStyle(cat, next);
+                  e.currentTarget.querySelector<HTMLElement>(`[data-kind="${next}"]`)?.focus();
+                }}
+              >
                 {STYLE_KINDS.map((kind) => {
                   const reason = disabledReason(cat, kind);
                   const on = selected === kind && !reason;
+                  const tabbable = !reason && kind === stop;
                   return (
                     <button
                       key={kind}
                       type="button"
                       role="radio"
+                      data-kind={kind}
+                      tabIndex={tabbable ? 0 : -1}
                       aria-checked={on}
                       aria-disabled={!!reason}
                       title={reason ?? undefined}

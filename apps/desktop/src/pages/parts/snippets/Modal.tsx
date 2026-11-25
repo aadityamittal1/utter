@@ -1,20 +1,34 @@
-import { useEffect, useRef } from "react";
+import { useEffect, useRef, useState } from "react";
 import type { ReactNode } from "react";
 import { X } from "lucide-react";
 import { IconButton } from "../../../components/ui";
 
 const FOCUSABLE = 'button:not([disabled]), input:not([disabled]), textarea:not([disabled]), select:not([disabled]), [href], [tabindex]:not([tabindex="-1"])';
 
-/** Minimal accessible modal: Esc closes, Tab stays inside, focus returns to the opener. */
+/** Elements on the page that should take focus when the opener is gone (mark with this attribute). */
+export const MODAL_FALLBACK_ATTR = "data-modal-fallback";
+
+/**
+ * Minimal accessible modal: Esc closes, Tab stays inside, focus starts inside
+ * and returns to the opener (or a `data-modal-fallback` element) on close.
+ */
 export function Modal({ title, onClose, children }: { title: string; onClose: () => void; children: ReactNode }) {
   const ref = useRef<HTMLDivElement>(null);
   const closeRef = useRef(onClose);
+  // Captured during the first render, before any child autoFocus can move focus.
+  const [opener] = useState(() => (typeof document === "undefined" ? null : (document.activeElement as HTMLElement | null)));
+
   useEffect(() => {
     closeRef.current = onClose;
   });
 
   useEffect(() => {
-    const opener = document.activeElement as HTMLElement | null;
+    const root = ref.current;
+    if (root && !root.contains(document.activeElement)) {
+      const first = root.querySelector<HTMLElement>("input, textarea, select") ?? root.querySelector<HTMLElement>(FOCUSABLE);
+      first?.focus();
+    }
+
     const onKey = (e: KeyboardEvent) => {
       if (e.key === "Escape") {
         e.stopPropagation();
@@ -24,10 +38,14 @@ export function Modal({ title, onClose, children }: { title: string; onClose: ()
         if (els.length === 0) return;
         const first = els[0];
         const last = els[els.length - 1];
-        if (e.shiftKey && document.activeElement === first) {
+        const active = document.activeElement;
+        if (!ref.current.contains(active)) {
+          e.preventDefault();
+          first.focus();
+        } else if (e.shiftKey && active === first) {
           e.preventDefault();
           last.focus();
-        } else if (!e.shiftKey && document.activeElement === last) {
+        } else if (!e.shiftKey && active === last) {
           e.preventDefault();
           first.focus();
         }
@@ -36,9 +54,10 @@ export function Modal({ title, onClose, children }: { title: string; onClose: ()
     document.addEventListener("keydown", onKey);
     return () => {
       document.removeEventListener("keydown", onKey);
-      opener?.focus?.();
+      const target = opener && opener.isConnected && opener !== document.body ? opener : document.querySelector<HTMLElement>(`[${MODAL_FALLBACK_ATTR}]`);
+      target?.focus?.();
     };
-  }, []);
+  }, [opener]);
 
   return (
     <div className="fixed inset-0 z-50 flex items-center justify-center bg-[var(--scrim)] p-6" onMouseDown={(e) => e.target === e.currentTarget && onClose()}>
