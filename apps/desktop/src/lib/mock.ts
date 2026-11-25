@@ -546,6 +546,7 @@ export function createMockBackend(options: { pillDemo?: boolean; onboarding?: bo
         return usage();
       case "pill_action":
         if (a.action === "openHub") emit("hub://navigate", { page: "home" });
+        if (a.action === "openSettings") emit("hub://navigate", { page: "settings" });
         return null;
       case "complete_onboarding":
         settings = { ...settings, onboarded: true };
@@ -564,13 +565,14 @@ export function createMockBackend(options: { pillDemo?: boolean; onboarding?: bo
 }
 
 function startPillDemo(emit: <E extends EventName>(e: E, p: EventMap[E]) => void) {
-  const script: { state: PillState["state"]; mode: string; ms: number; message?: string }[] = [
+  const script: { state: PillState["state"]; mode: string; ms: number; message?: string; startMs?: number }[] = [
     { state: "idle", mode: "dictate", ms: 1800 },
     { state: "listening", mode: "dictate", ms: 4000 },
     { state: "thinking", mode: "dictate", ms: 1400 },
     { state: "done", mode: "dictate", ms: 1400, message: "Inserted 24 words" },
     { state: "listening", mode: "dictateEnhance", ms: 3200 },
     { state: "locked", mode: "handsFree", ms: 3200 },
+    { state: "listening", mode: "dictate", ms: 2400, startMs: 1_158_000 },
     { state: "thinking", mode: "command", ms: 1400 },
     { state: "error", mode: "command", ms: 2400, message: "Add an API key to use commands" },
   ];
@@ -580,7 +582,8 @@ function startPillDemo(emit: <E extends EventName>(e: E, p: EventMap[E]) => void
   const tick = setInterval(() => {
     const cur = script[step];
     elapsed = Date.now() - stepStart;
-    emit("pill://state", { state: cur.state, mode: cur.mode, elapsedMs: elapsed, message: cur.message });
+    const shown = elapsed + (cur.startMs ?? 0);
+    emit("pill://state", { state: cur.state, mode: cur.mode, elapsedMs: shown, message: cur.message });
     if (cur.state === "listening" || cur.state === "locked") {
       const t = Date.now() / 220;
       emit("pill://levels", Array.from({ length: 12 }, (_, i) => Math.max(0.05, Math.min(1, 0.45 + Math.sin(t + i * 0.7) * 0.3 + Math.sin(t * 2.3 + i) * 0.15))));
