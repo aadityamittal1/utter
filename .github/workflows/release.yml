@@ -26,7 +26,7 @@ jobs:
       # Short target dir avoids Windows long-path link errors (LNK1104).
       CARGO_TARGET_DIR: C:\t
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v7
 
       - name: Check tag matches app version
         shell: pwsh
