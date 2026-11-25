@@ -1,5 +1,11 @@
-/* Utter design tokens. Values come from brand/palette.json. */
+/*
+ * Utter design tokens. Values come from brand/palette.json.
+ * Each semantic token is declared once as light-dark(light, dark); the active
+ * scheme comes from color-scheme: follows the OS unless [data-theme] forces it.
+ */
 :root {
+  color-scheme: light dark;
+
   /* core brand */
   --ink: #14131a;
   --paper: #faf8f5;
@@ -7,93 +13,39 @@
   --ember-dark: #e0401e;
   --lilac: #8b7cf6;
 
-
-  /* semantic: light */
-  --bg: #faf8f5;
-  --surface: #ffffff;
-  --surface-muted: #f3f0eb;
-  --border: #e4e0d9;
-  --border-strong: #cfcac1;
-  --text: #14131a;
-  --text-muted: #5e5b66;
-  --text-faint: #8a8794;
-  --accent: #e0401e;
+  /* semantic */
+  --bg: light-dark(#faf8f5, #14131a);
+  --surface: light-dark(#ffffff, #1d1c25);
+  --surface-muted: light-dark(#f3f0eb, #262530);
+  --border: light-dark(#e4e0d9, #34323f);
+  --border-strong: light-dark(#cfcac1, #3f3d49);
+  --text: light-dark(#14131a, #faf8f5);
+  --text-muted: light-dark(#5e5b66, #b4b1bc);
+  /* >= 4.5:1 on bg, surface and surface-muted in both themes */
+  --text-faint: light-dark(#6a6773, #9a97a4);
+  --accent: light-dark(#e0401e, #ff5a36);
   --accent-fill: #ff5a36;
-  --accent-fill-hover: #f24a26;
+  --accent-fill-hover: light-dark(#f24a26, #ff6e4f);
   --on-accent: #14131a;
-  --accent-soft: rgb(255 90 54 / 0.1);
-  --highlight: #8b7cf6;
-  --highlight-soft: rgb(139 124 246 / 0.12);
-  --danger: #c2331a;
-  --danger-soft: rgb(194 51 26 / 0.09);
-  --success: #2f7d4f;
-  --success-soft: rgb(47 125 79 / 0.1);
-  --hover: rgb(20 19 26 / 0.045);
-  --active: rgb(20 19 26 / 0.075);
-  --scrim: rgb(20 19 26 / 0.35);
-  --shadow-pop: 0 8px 24px -8px rgb(20 19 26 / 0.16), 0 0 0 1px var(--border);
-  --ring: var(--ember-dark);
+  --accent-soft: light-dark(rgb(255 90 54 / 0.1), rgb(255 90 54 / 0.14));
+  --highlight: light-dark(#8b7cf6, #a99efa);
+  --highlight-soft: light-dark(rgb(139 124 246 / 0.12), rgb(169 158 250 / 0.16));
+  --danger: light-dark(#c2331a, #ff8068);
+  --danger-soft: light-dark(rgb(194 51 26 / 0.09), rgb(255 128 104 / 0.13));
+  --success: light-dark(#2f7d4f, #6fcf97);
+  --success-soft: light-dark(rgb(47 125 79 / 0.1), rgb(111 207 151 / 0.13));
+  --hover: light-dark(rgb(20 19 26 / 0.045), rgb(250 248 245 / 0.06));
+  --active: light-dark(rgb(20 19 26 / 0.075), rgb(250 248 245 / 0.1));
+  --scrim: light-dark(rgb(20 19 26 / 0.35), rgb(0 0 0 / 0.55));
+  --shadow-color: light-dark(rgb(20 19 26 / 0.16), rgb(0 0 0 / 0.5));
+  --shadow-pop: 0 8px 24px -8px var(--shadow-color), 0 0 0 1px var(--border);
+  --ring: light-dark(#e0401e, #ff5a36);
+}
 
-  --radius-sm: 8px;
-  --radius: 12px;
-  --radius-lg: 16px;
-
+:root[data-theme="light"] {
   color-scheme: light;
 }
-
-@media (prefers-color-scheme: dark) {
-  :root:not([data-theme="light"]) {
-    --bg: #14131a;
-    --surface: #1d1c25;
-    --surface-muted: #262530;
-    --border: #34323f;
-    --border-strong: #3f3d49;
-    --text: #faf8f5;
-    --text-muted: #b4b1bc;
-    --text-faint: #8a8794;
-    --accent: #ff5a36;
-    --accent-fill: #ff5a36;
-    --accent-fill-hover: #ff6e4f;
-    --accent-soft: rgb(255 90 54 / 0.14);
-    --highlight: #a99efa;
-    --highlight-soft: rgb(169 158 250 / 0.16);
-    --danger: #ff8068;
-    --danger-soft: rgb(255 128 104 / 0.13);
-    --success: #6fcf97;
-    --success-soft: rgb(111 207 151 / 0.13);
-    --hover: rgb(250 248 245 / 0.06);
-    --active: rgb(250 248 245 / 0.1);
-    --scrim: rgb(0 0 0 / 0.55);
-    --shadow-pop: 0 8px 24px -8px rgb(0 0 0 / 0.5), 0 0 0 1px var(--border);
-    --ring: var(--ember);
-    color-scheme: dark;
-  }
-}
-
 :root[data-theme="dark"] {
-  --bg: #14131a;
-  --surface: #1d1c25;
-  --surface-muted: #262530;
-  --border: #34323f;
-  --border-strong: #3f3d49;
-  --text: #faf8f5;
-  --text-muted: #b4b1bc;
-  --text-faint: #8a8794;
-  --accent: #ff5a36;
-  --accent-fill: #ff5a36;
-  --accent-fill-hover: #ff6e4f;
-  --accent-soft: rgb(255 90 54 / 0.14);
-  --highlight: #a99efa;
-  --highlight-soft: rgb(169 158 250 / 0.16);
-  --danger: #ff8068;
-  --danger-soft: rgb(255 128 104 / 0.13);
-  --success: #6fcf97;
-  --success-soft: rgb(111 207 151 / 0.13);
-  --hover: rgb(250 248 245 / 0.06);
-  --active: rgb(250 248 245 / 0.1);
-  --scrim: rgb(0 0 0 / 0.55);
-  --shadow-pop: 0 8px 24px -8px rgb(0 0 0 / 0.5), 0 0 0 1px var(--border);
-  --ring: var(--ember);
   color-scheme: dark;
 }
 
@@ -101,9 +53,14 @@
   --font-sans: "Inter", system-ui, sans-serif;
   --font-display: "Instrument Serif", Georgia, serif;
   --font-mono: "JetBrains Mono", ui-monospace, monospace;
+
+  /* Own names so Tailwind's rounded-sm/lg keep their meaning. */
+  --radius-control: 8px;
+  --radius-card: 12px;
+  --radius-panel: 16px;
 }
 
-/* Tailwind utilities: bg-surface, text-muted, border-line, rounded-card ... */
+/* Tailwind utilities: bg-surface, text-muted, border-line, ... */
 @theme inline {
   --color-bg: var(--bg);
   --color-surface: var(--surface);
@@ -124,7 +81,4 @@
   --color-success: var(--success);
   --color-success-soft: var(--success-soft);
   --color-hover: var(--hover);
-  --radius-control: var(--radius-sm);
-  --radius-card: var(--radius);
-  --radius-panel: var(--radius-lg);
 }

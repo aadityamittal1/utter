@@ -27,6 +27,8 @@ describe("format", () => {
   it("formats usd and numbers", () => {
     expect(formatUsd(0.0412)).toBe("$0.04");
     expect(formatUsd(12)).toBe("$12.00");
+    expect(formatUsd(0.0004)).toBe("<$0.01");
+    expect(formatUsd(0)).toBe("$0.00");
     expect(formatNumber(12345)).toBe("12,345");
   });
 });

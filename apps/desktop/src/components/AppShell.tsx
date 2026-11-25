@@ -1,17 +1,18 @@
 import { useEffect } from "react";
-import { startStoreListeners, useNav, useSettings } from "../lib/store";
+import { useNav, useStoreListeners, useSettings } from "../lib/store";
 import { PAGE_COMPONENTS } from "../pages/registry";
 import Onboarding from "../onboarding/Onboarding";
 import { ToastHost } from "./ui/Toast";
 import { Sidebar } from "./Sidebar";
+import { ErrorBoundary } from "./ErrorBoundary";
 
 export function AppShell() {
   const page = useNav((s) => s.page);
   const { settings, loading, error, load } = useSettings();
 
+  useStoreListeners();
   useEffect(() => {
     void load();
-    return startStoreListeners();
   }, [load]);
 
   if (loading) return <div className="h-full bg-bg" aria-busy="true" />;
@@ -42,7 +43,9 @@ export function AppShell() {
       <Sidebar />
       <main className="min-w-0 flex-1 overflow-y-auto" id="content">
         <div key={page} className="page-enter mx-auto w-full max-w-[920px] px-10 pb-16 pt-9">
-          <Page />
+          <ErrorBoundary resetKey={page}>
+            <Page />
+          </ErrorBoundary>
         </div>
       </main>
       <ToastHost />

@@ -31,7 +31,7 @@ export function Wordmark({ height = 18, ...props }: { height?: number } & Omit<S
 
 export function Logo({ height = 18 }: { height?: number }) {
   return (
-    <span className="inline-flex items-center gap-2.5 text-ink">
+    <span role="img" aria-label="Utter" className="inline-flex items-center gap-2.5 text-ink">
       <LogoMark width={Math.round((height * 128) / 72) + 8} aria-hidden />
       <Wordmark height={height} aria-hidden />
     </span>

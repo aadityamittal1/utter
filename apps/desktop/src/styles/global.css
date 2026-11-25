@@ -54,7 +54,7 @@
   :focus-visible {
     outline: 2px solid var(--ring);
     outline-offset: 2px;
-    border-radius: var(--radius-sm);
+    border-radius: var(--radius-control);
   }
 
   /* Quiet scrollbars. */
@@ -78,7 +78,7 @@
     background: linear-gradient(90deg, var(--surface-muted) 0%, var(--hover) 50%, var(--surface-muted) 100%);
     background-size: 200% 100%;
     animation: shimmer 1.4s linear infinite;
-    border-radius: var(--radius-sm);
+    border-radius: var(--radius-control);
   }
 }
 

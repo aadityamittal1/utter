@@ -123,20 +123,22 @@ function seedHistory(now: number): HistoryItem[] {
   return items.sort((a, b) => b.createdAt - a.createdAt);
 }
 
-const DEFAULT_SHORTCUTS: Record<string, string[]> = {
-  dictate: ["Ctrl", "Win"],
-  handsFree: ["Ctrl", "Win", "Space"],
-  dictateEnhance: ["Ctrl", "Win", "Shift"],
-  command: ["Ctrl", "Win", "Alt"],
+const DEFAULT_SHORTCUTS: Settings["shortcuts"] = {
+  dictate: ["Ctrl+Win"],
+  handsFree: ["Ctrl+Win+Space"],
+  dictateEnhance: ["Ctrl+Win+Shift"],
+  command: ["Ctrl+Win+Alt"],
   cancel: ["Esc"],
-  pasteLast: ["Alt", "Shift", "Z"],
-  copyLast: ["Alt", "Shift", "C"],
-  quickNote: ["Alt", "Shift", "N"],
+  pasteLast: ["Alt+Shift+Z"],
+  copyLast: ["Alt+Shift+C"],
+  quickNote: ["Alt+Shift+N"],
+  "transform:tf_polish": ["Alt+Shift+1"],
+  "transform:tf_prompt": ["Alt+Shift+2"],
 };
 
-function defaultSettings(): Settings {
+function defaultSettings(onboarded: boolean): Settings {
   return {
-    onboarded: true,
+    onboarded,
     userName: "Maya",
     shortcuts: structuredClone(DEFAULT_SHORTCUTS),
     microphone: null,
@@ -191,9 +193,9 @@ export interface MockBackend {
   on<E extends EventName>(event: E, cb: (payload: EventMap[E]) => void): () => void;
 }
 
-export function createMockBackend(options: { pillDemo?: boolean } = {}): MockBackend {
+export function createMockBackend(options: { pillDemo?: boolean; onboarding?: boolean } = {}): MockBackend {
   const now = Date.now();
-  let settings = defaultSettings();
+  let settings = defaultSettings(!options.onboarding);
   let history = seedHistory(now);
   let models = seedModels();
   let transforms = seedTransforms();
@@ -281,6 +283,14 @@ export function createMockBackend(options: { pillDemo?: boolean } = {}): MockBac
 
   const text = (v: unknown) => String(v ?? "");
 
+  function checkSnippet(trigger: string, expansion: string, selfId: string | undefined) {
+    if (!trigger) throw "Enter a trigger phrase";
+    if (trigger.length > 60) throw "Snippet trigger must be 60 characters or fewer";
+    if (!expansion.trim()) throw "Enter the text to insert";
+    if (expansion.length > 4000) throw "Snippet text must be 4,000 characters or fewer";
+    if (snippets.some((s) => s.id !== selfId && s.trigger.toLowerCase() === trigger.toLowerCase())) throw "Snippet trigger already exists";
+  }
+
   async function invoke(cmd: string, a: Args = {}): Promise<unknown> {
     switch (cmd) {
       case "get_settings":
@@ -336,13 +346,21 @@ export function createMockBackend(options: { pillDemo?: boolean } = {}): MockBac
         downloads.delete(text(a.id));
         return null;
       }
-      case "delete_model":
-        models = models.map((m) => (m.id === a.id ? { ...m, downloaded: false, active: false } : m));
+      case "delete_model": {
+        const target = models.find((m) => m.id === a.id);
+        if (target?.active) throw "Can't delete the active model";
+        models = models.map((m) => (m.id === a.id ? { ...m, downloaded: false } : m));
         return null;
-      case "set_active_model":
+      }
+      case "set_active_model": {
+        const target = models.find((m) => m.id === a.id);
+        if (!target) throw "Unknown model";
+        if (!target.downloaded) throw "Download the model first";
         models = models.map((m) => ({ ...m, active: m.id === a.id }));
-        settings = { ...settings, activeModel: text(a.id) };
+        settings = { ...settings, activeModel: target.id };
+        emit("settings://changed", structuredClone(settings));
         return null;
+      }
       case "list_microphones":
         return ["Microphone Array (Realtek Audio)", "Headset (WH-1000XM5 Hands-Free)", "USB Condenser Mic"];
       case "start_mic_test": {
@@ -402,14 +420,21 @@ export function createMockBackend(options: { pillDemo?: boolean } = {}): MockBac
       case "dictionary_list":
         return structuredClone(dictionary);
       case "dictionary_add": {
-        const word = text(a.word).trim().slice(0, 60);
+        const word = text(a.word).trim();
+        if (!word) throw "Enter a word";
+        if (word.length > 60) throw "Word must be 60 characters or fewer";
+        if (dictionary.some((d) => d.word.toLowerCase() === word.toLowerCase() && (d.heardAs ?? "") === text(a.heardAs).trim()))
+          throw "That word is already in your dictionary";
         const e: DictEntry = { id: nextId("d"), word, heardAs: a.heardAs ? text(a.heardAs) : undefined, auto: false };
         dictionary.unshift(e);
         return structuredClone(e);
       }
       case "dictionary_update": {
         const e = a.entry as DictEntry;
+        if (!e.word.trim()) throw "Enter a word";
+        if (e.word.length > 60) throw "Word must be 60 characters or fewer";
         const i = dictionary.findIndex((d) => d.id === e.id);
+        if (i < 0) throw "Not found";
         if (i >= 0) dictionary[i] = { ...e };
         return structuredClone(e);
       }
@@ -433,14 +458,19 @@ export function createMockBackend(options: { pillDemo?: boolean } = {}): MockBac
       case "snippets_list":
         return structuredClone(snippets);
       case "snippets_add": {
-        const s: Snippet = { id: nextId("s"), trigger: text(a.trigger).slice(0, 60), expansion: text(a.expansion).slice(0, 4000) };
+        const trigger = text(a.trigger).trim();
+        const expansion = text(a.expansion);
+        checkSnippet(trigger, expansion, undefined);
+        const s: Snippet = { id: nextId("s"), trigger, expansion };
         snippets.unshift(s);
         return structuredClone(s);
       }
       case "snippets_update": {
         const s = a.snippet as Snippet;
+        checkSnippet(s.trigger.trim(), s.expansion, s.id);
         const i = snippets.findIndex((x) => x.id === s.id);
-        if (i >= 0) snippets[i] = { ...s };
+        if (i < 0) throw "Not found";
+        snippets[i] = { ...s, trigger: s.trigger.trim() };
         return structuredClone(s);
       }
       case "snippets_delete":
@@ -478,8 +508,16 @@ export function createMockBackend(options: { pillDemo?: boolean } = {}): MockBac
       }
       case "transforms_update": {
         const t = a.transform as Transform;
-        transforms = transforms.map((x) => (x.id === t.id ? { ...t } : x));
-        return structuredClone(t);
+        const cur = transforms.find((x) => x.id === t.id);
+        if (!cur) throw "Not found";
+        const next: Transform = cur.builtin
+          ? (() => {
+              if (t.name !== cur.name || t.instruction !== cur.instruction) throw "Built-in transforms can only change their shortcut";
+              return { ...cur, shortcut: t.shortcut };
+            })()
+          : { ...t, builtin: false };
+        transforms = transforms.map((x) => (x.id === t.id ? next : x));
+        return structuredClone(next);
       }
       case "transforms_delete":
         transforms = transforms.filter((t) => t.id !== a.id || t.builtin);

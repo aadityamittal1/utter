@@ -1,4 +1,4 @@
-import { useCallback, useEffect, useRef, useState } from "react";
+import { useEffect, useRef, useState } from "react";
 import { Keyboard } from "lucide-react";
 import { ipc, isTauri, on } from "../../lib/ipc";
 import { cn } from "../../lib/cn";
@@ -15,56 +15,64 @@ const NAMES: Record<string, string> = {
   ArrowLeft: "Left",
   ArrowRight: "Right",
 };
+const MOD_ORDER = ["Ctrl", "Win", "Alt", "Shift"];
 
 function keyName(k: string): string {
   return NAMES[k] ?? (k.length === 1 ? k.toUpperCase() : k);
 }
 
 /**
- * Click to record a chord. Inside the app the backend captures keys globally
+ * Click to record one binding. `value` / `onChange` use a full chord string
+ * such as "Ctrl+Win+Space". Inside the app the backend captures keys globally
  * (so the Win key works); in a browser it falls back to window key events.
  */
-export function ShortcutRecorder({ value, onChange, label }: { value: string[]; onChange: (chord: string[]) => void; label: string }) {
+export function ShortcutRecorder({ value, onChange, label }: { value: string | undefined; onChange: (chord: string) => void; label: string }) {
   const [recording, setRecording] = useState(false);
-  const held = useRef<string[]>([]);
   const onChangeRef = useRef(onChange);
   useEffect(() => {
     onChangeRef.current = onChange;
   });
 
-  const stop = useCallback(() => {
-    setRecording(false);
-    held.current = [];
-    if (isTauri()) void ipc.stopShortcutCapture();
-  }, []);
-
   useEffect(() => {
     if (!recording) return;
-    const cleanups: Array<() => void> = [];
     let cancelled = false;
+    const cleanups: Array<() => void> = [];
+
     if (isTauri()) {
-      void ipc.startShortcutCapture();
-      void on("shortcut://captured", ({ chord }) => {
-        onChangeRef.current(chord.split("+").filter(Boolean));
-        stop();
-      }).then((off) => (cancelled ? off() : cleanups.push(off)));
+      // Listener first, so an immediate capture event is never missed.
+      void (async () => {
+        try {
+          const off = await on("shortcut://captured", ({ chord }) => {
+            onChangeRef.current(chord);
+            setRecording(false);
+          });
+          if (cancelled) return off();
+          cleanups.push(off);
+          await ipc.startShortcutCapture();
+        } catch {
+          setRecording(false);
+        }
+      })();
+      // Always release the global capture, however recording ends (including unmount).
+      cleanups.push(() => void ipc.stopShortcutCapture().catch(() => undefined));
     } else {
+      let held: string[] = [];
       const down = (e: KeyboardEvent) => {
         e.preventDefault();
-        if (e.key === "Escape") return stop();
+        if (e.key === "Escape") return setRecording(false);
         const name = keyName(e.key);
-        if (!held.current.includes(name)) held.current = [...held.current, name];
+        if (!held.includes(name)) held = [...held, name];
         if (!MODS.includes(e.key)) {
-          const mods = ["Ctrl", "Win", "Alt", "Shift"].filter((m) => held.current.includes(m));
-          onChangeRef.current([...mods, name]);
-          stop();
+          const mods = MOD_ORDER.filter((m) => held.includes(m));
+          onChangeRef.current([...mods, name].join("+"));
+          setRecording(false);
         }
       };
       const up = (e: KeyboardEvent) => {
         // modifier-only chords (e.g. Ctrl+Win) commit on release
-        if (MODS.includes(e.key) && held.current.length > 0) {
-          onChangeRef.current(held.current);
-          stop();
+        if (MODS.includes(e.key) && held.length > 0) {
+          onChangeRef.current(MOD_ORDER.filter((m) => held.includes(m)).join("+"));
+          setRecording(false);
         }
       };
       window.addEventListener("keydown", down);
@@ -78,20 +86,20 @@ export function ShortcutRecorder({ value, onChange, label }: { value: string[]; 
       cancelled = true;
       cleanups.forEach((c) => c());
     };
-  }, [recording, stop]);
+  }, [recording]);
 
   return (
     <button
       type="button"
       aria-label={`${label} shortcut. Press to change.`}
-      onClick={() => (recording ? stop() : setRecording(true))}
-      onBlur={() => recording && stop()}
+      onClick={() => setRecording((r) => !r)}
+      onBlur={() => setRecording(false)}
       className={cn(
         "inline-flex h-9 min-w-[150px] items-center justify-between gap-3 rounded-control border bg-surface px-3 transition-colors",
         recording ? "border-ember" : "border-line hover:border-line-strong",
       )}
     >
-      {recording ? <span className="text-[13px] text-accent">Press new keys...</span> : <Chord chord={value} />}
+      {recording ? <span className="text-[13px] text-ink">Press new keys...</span> : <Chord chord={value} />}
       <Keyboard size={15} aria-hidden className="text-faint" />
     </button>
   );

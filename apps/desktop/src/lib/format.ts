@@ -40,6 +40,7 @@ export function formatDuration(ms: number): string {
 
 /** 0.0412 -> "$0.04" */
 export function formatUsd(n: number): string {
+  if (n > 0 && n < 0.005) return "<$0.01";
   return `$${n.toFixed(2)}`;
 }
 

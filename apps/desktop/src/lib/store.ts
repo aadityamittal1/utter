@@ -1,13 +1,32 @@
 import { create } from "zustand";
-import { ipc, on } from "./ipc";
+import { useEffect } from "react";
+import { ipc } from "./ipc";
+import { useBackendEvent } from "./useBackendEvent";
 import type { Page, Settings, ThemePref } from "./types";
 
 export const PAGES: Page[] = ["home", "history", "dictionary", "snippets", "styles", "transforms", "notes", "insights", "settings"];
+
+export const THEME_KEY = "utter.theme";
 
 export function applyTheme(theme: ThemePref) {
   const el = document.documentElement;
   if (theme === "system") el.removeAttribute("data-theme");
   else el.setAttribute("data-theme", theme);
+  try {
+    localStorage.setItem(THEME_KEY, theme);
+  } catch {
+    /* storage unavailable: theme still applies for this session */
+  }
+}
+
+/** Apply the last known theme before first paint to avoid a flash. */
+export function applyCachedTheme() {
+  try {
+    const t = localStorage.getItem(THEME_KEY);
+    if (t === "light" || t === "dark") document.documentElement.setAttribute("data-theme", t);
+  } catch {
+    /* ignore */
+  }
 }
 
 interface SettingsStore {
@@ -15,11 +34,18 @@ interface SettingsStore {
   loading: boolean;
   error: string | null;
   load: () => Promise<void>;
-  /** Merge a partial update and persist it. Optimistic; rolls back on failure. */
+  /**
+   * Merge a partial update. The UI changes immediately; persistence is
+   * serialized so quick successive calls never overwrite each other. On
+   * failure only this call's keys roll back and a toast is shown.
+   */
   update: (patch: Partial<Settings>) => Promise<void>;
   /** Replace local copy (used for settings://changed). */
   replace: (s: Settings) => void;
 }
+
+let saveQueue: Promise<void> = Promise.resolve();
+let pendingSaves = 0;
 
 export const useSettings = create<SettingsStore>((set, get) => ({
   settings: null,
@@ -34,20 +60,36 @@ export const useSettings = create<SettingsStore>((set, get) => ({
       set({ loading: false, error: String(e) });
     }
   },
-  update: async (patch) => {
-    const prev = get().settings;
-    if (!prev) return;
-    const optimistic = { ...prev, ...patch };
+  update: (patch) => {
+    const cur = get().settings;
+    if (!cur) return Promise.resolve();
+    const keys = Object.keys(patch) as Array<keyof Settings>;
+    const previous: Partial<Settings> = {};
+    for (const k of keys) (previous as Record<string, unknown>)[k] = cur[k];
     if (patch.theme) applyTheme(patch.theme);
-    set({ settings: optimistic });
-    try {
-      const saved = await ipc.updateSettings(optimistic);
-      set({ settings: saved });
-    } catch (e) {
-      applyTheme(prev.theme);
-      set({ settings: prev, error: String(e) });
-      throw e;
-    }
+    set({ settings: { ...cur, ...patch } });
+    pendingSaves++;
+    saveQueue = saveQueue.then(async () => {
+      try {
+        const latest = get().settings;
+        if (!latest) return;
+        const saved = await ipc.updateSettings(latest);
+        pendingSaves--;
+        // Only adopt the server copy when no newer local edits are waiting.
+        set(pendingSaves === 0 ? { settings: saved, error: null } : { error: null });
+      } catch (e) {
+        pendingSaves--;
+        const s = get().settings;
+        const msg = typeof e === "string" ? e : e instanceof Error ? e.message : "Couldn't save settings";
+        if (s) {
+          const restored = { ...s, ...previous };
+          if (previous.theme) applyTheme(previous.theme);
+          set({ settings: restored, error: msg });
+        }
+        toast.error(msg);
+      }
+    });
+    return saveQueue;
   },
   replace: (s) => {
     applyTheme(s.theme);
@@ -55,25 +97,40 @@ export const useSettings = create<SettingsStore>((set, get) => ({
   },
 }));
 
+function pageFromHash(): Page {
+  const h = typeof location === "undefined" ? "" : location.hash.replace(/^#\/?/, "");
+  return (PAGES as string[]).includes(h) ? (h as Page) : "home";
+}
+
 interface NavStore {
   page: Page;
   navigate: (page: Page) => void;
 }
 
+/** Current page. Mirrored in the URL hash so reloads and deep links keep their place. */
 export const useNav = create<NavStore>((set) => ({
-  page: "home",
-  navigate: (page) => set({ page }),
+  page: pageFromHash(),
+  navigate: (page) => {
+    set({ page });
+    try {
+      history.replaceState(null, "", `#${page}`);
+    } catch {
+      /* ignore */
+    }
+  },
 }));
 
-/** Wire backend events into the stores. Returns a cleanup function. */
-export function startStoreListeners(): () => void {
-  const offs: Array<Promise<() => void>> = [
-    on("settings://changed", (s) => useSettings.getState().replace(s)),
-    on("hub://navigate", ({ page }) => {
-      if ((PAGES as string[]).includes(page)) useNav.getState().navigate(page as Page);
-    }),
-  ];
-  return () => offs.forEach((p) => p.then((off) => off()));
+/** Wire backend events and the URL hash into the stores. Call once in the shell. */
+export function useStoreListeners(): void {
+  useBackendEvent("settings://changed", (s) => useSettings.getState().replace(s));
+  useBackendEvent("hub://navigate", ({ page }) => {
+    if ((PAGES as string[]).includes(page)) useNav.getState().navigate(page as Page);
+  });
+  useEffect(() => {
+    const onHash = () => useNav.setState({ page: pageFromHash() });
+    window.addEventListener("hashchange", onHash);
+    return () => window.removeEventListener("hashchange", onHash);
+  }, []);
 }
 
 export type ToastKind = "info" | "success" | "error";

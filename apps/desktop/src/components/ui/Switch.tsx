@@ -30,7 +30,7 @@ export function Switch({ checked, onChange, label, disabled, id }: SwitchProps) 
         aria-hidden
         className={cn(
           "inline-block size-3.5 rounded-full bg-white shadow-[0_1px_2px_rgb(20_19_26/0.3)] transition-transform duration-200 ease-[cubic-bezier(0.16,1,0.3,1)]",
-          checked ? "translate-x-[19px]" : "translate-x-[3px]",
+          checked ? "translate-x-[17px]" : "translate-x-[3px]",
         )}
       />
     </button>

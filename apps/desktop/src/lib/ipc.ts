@@ -25,8 +25,8 @@ export const isTauri = (): boolean => typeof window !== "undefined" && "__TAURI_
 let mock: MockBackend | null = null;
 function getMock(): MockBackend {
   if (!mock) {
-    const pillDemo = typeof location !== "undefined" && new URLSearchParams(location.search).has("pill-demo");
-    mock = createMockBackend({ pillDemo });
+    const q = typeof location !== "undefined" ? new URLSearchParams(location.search) : new URLSearchParams();
+    mock = createMockBackend({ pillDemo: q.has("pill-demo"), onboarding: q.has("onboarding") });
   }
   return mock;
 }

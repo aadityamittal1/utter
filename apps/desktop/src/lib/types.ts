@@ -31,7 +31,8 @@ export type HistoryRetention = "forever" | "day" | "never";
 export interface Settings {
   onboarded: boolean;
   userName: string;
-  shortcuts: Record<string, string[]>;
+  /** Each entry is a full chord string like "Ctrl+Win" (alternative bindings). */
+  shortcuts: Partial<Record<Action, string[]>>;
   microphone: string | null;
   keepMicWarm: boolean;
   language: string; // "auto" | iso639

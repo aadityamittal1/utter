@@ -51,15 +51,17 @@ export function Sidebar() {
       <div data-tauri-drag-region className="px-2.5 pb-6 pt-1">
         <Logo height={17} />
       </div>
-      <nav aria-label="Main" className="flex flex-1 flex-col gap-0.5 overflow-y-auto">
-        {NAV_ITEMS.map((item) => (
-          <NavButton key={item.page} item={item} active={page === item.page} onSelect={navigate} />
-        ))}
+      <nav aria-label="Main" className="flex min-h-0 flex-1 flex-col">
+        <div className="flex flex-1 flex-col gap-0.5 overflow-y-auto">
+          {NAV_ITEMS.map((item) => (
+            <NavButton key={item.page} item={item} active={page === item.page} onSelect={navigate} />
+          ))}
+        </div>
+        <div className="mt-3 border-t border-line pt-3">
+          <NavButton item={SETTINGS_ITEM} active={page === "settings"} onSelect={navigate} />
+        </div>
       </nav>
-      <div className="mt-3 flex flex-col gap-3 border-t border-line pt-3">
-        <NavButton item={SETTINGS_ITEM} active={page === "settings"} onSelect={navigate} />
-        <p className="px-2.5 text-xs text-faint">Powered by Claude Haiku</p>
-      </div>
+      <p className="mt-3 px-2.5 text-xs text-faint">Powered by Claude Haiku</p>
     </aside>
   );
 }
