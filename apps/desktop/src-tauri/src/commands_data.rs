@@ -1,6 +1,9 @@
 //! IPC commands for stored data: history, dictionary, snippets, transforms, notes, stats.
 
-use crate::commands::{err, from_ipc, ipc, ipc_list, parse_id, CmdResult, St};
+use crate::app_state::AppState;
+use crate::commands::{err, from_ipc, ipc, ipc_list, parse_id, update_settings_with, CmdResult, St};
+use crate::hotkeys::action::Action;
+use std::sync::Arc;
 use crate::context::foreground_windows::foreground_app;
 use crate::insert::{copy_text, insert_text, paste_method_for};
 use crate::store::{Note, Transform};
@@ -63,10 +66,17 @@ pub async fn history_insert(st: St<'_>, id: String) -> CmdResult<()> {
 }
 
 #[tauri::command]
-pub fn history_copy(st: St, id: String) -> CmdResult<()> {
-    let item = st.db.get_history(parse_id(&id)?).ok_or("That item no longer exists")?;
-    copy_text(&item.final_text);
-    Ok(())
+pub async fn history_copy(st: St<'_>, id: String) -> CmdResult<()> {
+    let id = parse_id(&id)?;
+    let state = st.inner().clone();
+    // The clipboard can be held by another process for a moment: keep it off the main thread.
+    tauri::async_runtime::spawn_blocking(move || -> CmdResult<()> {
+        let item = state.db.get_history(id).ok_or("That item no longer exists")?;
+        copy_text(&item.final_text);
+        Ok(())
+    })
+    .await
+    .map_err(err)?
 }
 
 #[tauri::command]
@@ -162,6 +172,22 @@ pub fn snippets_export_csv(st: St) -> CmdResult<String> {
 
 // ---- transforms ----
 
+/// `settings.shortcuts["transform:<id>"]` is the single source of truth for a transform's
+/// shortcut; the transform row mirrors it. Writing settings rebuilds the hotkey bindings.
+fn set_transform_shortcut(st: &Arc<AppState>, id: &str, shortcut: Option<&str>) {
+    let action = Action::Transform(id.to_string());
+    let chords = shortcut
+        .filter(|c| !c.trim().is_empty())
+        .map(|c| vec![c.to_string()])
+        .unwrap_or_default(); // empty = explicitly cleared (default shortcuts are not re-filled)
+    let res = update_settings_with(st, |s| {
+        s.shortcuts.insert(action, chords);
+    });
+    if res.is_err() {
+        st.rebuild_bindings();
+    }
+}
+
 #[tauri::command]
 pub fn transforms_list(st: St) -> Vec<Transform> {
     st.db.transforms_list()
@@ -175,20 +201,24 @@ pub fn transforms_add(
     shortcut: Option<String>,
 ) -> CmdResult<Transform> {
     let t = st.db.transforms_add(&name, &instruction, shortcut.as_deref()).map_err(err)?;
-    st.rebuild_bindings();
+    set_transform_shortcut(st.inner(), &t.id, t.shortcut.as_deref());
     Ok(t)
 }
 
 #[tauri::command]
 pub fn transforms_update(st: St, transform: Transform) -> CmdResult<Transform> {
     let t = st.db.transforms_update(&transform).map_err(err)?;
-    st.rebuild_bindings();
+    set_transform_shortcut(st.inner(), &t.id, t.shortcut.as_deref());
     Ok(t)
 }
 
 #[tauri::command]
 pub fn transforms_delete(st: St, id: String) -> CmdResult<()> {
     st.db.transforms_delete(&id).map_err(err)?;
+    let key = Action::Transform(id);
+    let _ = update_settings_with(st.inner(), |s| {
+        s.shortcuts.remove(&key);
+    });
     st.rebuild_bindings();
     Ok(())
 }
@@ -219,10 +249,15 @@ pub fn notes_delete(st: St, id: String) -> CmdResult<()> {
 // ---- stats ----
 
 #[tauri::command]
-pub fn insights_get(st: St) -> Value {
-    let now = chrono::Utc::now().timestamp_millis();
-    let tz = chrono::Local::now().offset().local_minus_utc() / 60;
-    serde_json::to_value(st.db.insights(now, tz)).unwrap_or(Value::Null)
+pub async fn insights_get(st: St<'_>) -> CmdResult<Value> {
+    let state = st.inner().clone();
+    tauri::async_runtime::spawn_blocking(move || {
+        let now = chrono::Utc::now().timestamp_millis();
+        let tz = chrono::Local::now().offset().local_minus_utc() / 60;
+        serde_json::to_value(state.db.insights(now, tz)).unwrap_or(Value::Null)
+    })
+    .await
+    .map_err(err)
 }
 
 #[tauri::command]

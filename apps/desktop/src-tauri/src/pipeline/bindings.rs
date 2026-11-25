@@ -15,14 +15,18 @@ fn trigger_for(action: &Action) -> Trigger {
     }
 }
 
-/// A transform's own `shortcut` (edited on the Transforms page) overrides the settings entry
-/// for `transform:<id>`; custom transforms with a shortcut get a binding even when settings
-/// has none. Unparseable chords are skipped (logged without the chord text being trusted).
+/// `settings.shortcuts` is authoritative (transform edits write through to it). A transform's
+/// row `shortcut` is only a fallback for a transform with no settings entry at all.
+/// Unparseable chords are skipped.
 pub fn build_bindings(settings: &Settings, transforms: &[Transform]) -> Vec<Binding> {
     let mut map: BTreeMap<Action, Vec<String>> = settings.shortcuts.clone();
     for t in transforms {
-        if let Some(sc) = t.shortcut.as_ref().filter(|s| !s.trim().is_empty()) {
-            map.insert(Action::Transform(t.id.clone()), vec![sc.clone()]);
+        let key = Action::Transform(t.id.clone());
+        if let (false, Some(sc)) = (
+            map.contains_key(&key),
+            t.shortcut.as_ref().filter(|s| !s.trim().is_empty()),
+        ) {
+            map.insert(key, vec![sc.clone()]);
         }
     }
     let mut out = Vec::new();
@@ -79,7 +83,7 @@ mod tests {
     }
 
     #[test]
-    fn transform_shortcut_overrides_and_adds() {
+    fn settings_win_and_row_shortcut_is_only_a_fallback() {
         let s = Settings::default();
         let b = build_bindings(
             &s,
@@ -90,7 +94,7 @@ mod tests {
                 .find(|x| x.action == Action::Transform(id.into()))
                 .map(|x| x.chord.to_string())
         };
-        assert_eq!(find("polish").as_deref(), Some("Alt+Shift+9"));
+        assert_eq!(find("polish").as_deref(), Some("Alt+Shift+1"), "settings is authoritative");
         assert_eq!(find("tabc").as_deref(), Some("Alt+Shift+8"));
         assert_eq!(find("prompt").as_deref(), Some("Alt+Shift+2"));
     }

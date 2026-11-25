@@ -84,7 +84,7 @@ impl Default for Settings {
             keep_mic_warm: false,
             language: "auto".into(),
             translate_to_english: false,
-            active_model: "small-q5_1".into(),
+            active_model: crate::stt::catalog::default_model_id().into(),
             ai_model: "claude-haiku-5-5".into(),
             cleanup_level: CleanupLevel::Light,
             styles: default_styles(),

@@ -44,7 +44,8 @@ fn setup(app: &mut tauri::App) -> Result<(), Box<dyn std::error::Error>> {
 
     windows::create_pill(&handle)?;
     tray::create(&handle)?;
-    windows::sync_pill(&handle, &st.pill.lock().clone(), st.pill_allowed());
+    let pill_now = st.pill.lock().clone();
+    windows::sync_pill(&handle, &pill_now, st.pill_allowed());
 
     // Keyboard hook -> session worker.
     let (ktx, krx) = mpsc::channel::<RawKey>();
@@ -96,14 +97,15 @@ fn setup(app: &mut tauri::App) -> Result<(), Box<dyn std::error::Error>> {
 #[cfg_attr(mobile, tauri::mobile_entry_point)]
 pub fn run() {
     let app = tauri::Builder::default()
+        // Single-instance first: a second launch must exit before anything else initialises.
+        .plugin(tauri_plugin_single_instance::init(|app, _args, _cwd| {
+            windows::show_hub(app, None);
+        }))
         .plugin(
             tauri_plugin_log::Builder::new()
                 .level(log::LevelFilter::Info)
                 .build(),
         )
-        .plugin(tauri_plugin_single_instance::init(|app, _args, _cwd| {
-            windows::show_hub(app, None);
-        }))
         .plugin(tauri_plugin_autostart::init(
             tauri_plugin_autostart::MacosLauncher::LaunchAgent,
             Some(vec!["--minimized"]),

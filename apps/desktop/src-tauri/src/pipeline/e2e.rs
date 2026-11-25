@@ -191,7 +191,8 @@ fn wav_to_notepad() {
     let stamp = std::time::SystemTime::now()
         .duration_since(std::time::UNIX_EPOCH)
         .map_or(0, |d| d.as_nanos());
-    let tmp = std::env::temp_dir().join(format!("{name}_{stamp}.txt"));
+    let unique = format!("{name}_{stamp}");
+    let tmp = std::env::temp_dir().join(format!("{unique}.txt"));
     std::fs::write(&tmp, "").expect("temp file");
     let child = std::process::Command::new("notepad.exe")
         .arg(&tmp)
@@ -199,16 +200,21 @@ fn wav_to_notepad() {
         .expect("spawn notepad");
     let mut guard = Cleanup { pid: None, child, tmp, clipboard };
 
-    let mut windows = Vec::new();
+    // Adopt ONLY a window whose title carries this run's unique file name; a Notepad the user
+    // opens while we launch must never be adopted (and later killed by the Drop guard).
+    let mut ours: Vec<(isize, u32)> = Vec::new();
     for _ in 0..50 {
         std::thread::sleep(Duration::from_millis(200));
-        windows = find_notepads();
-        if !windows.is_empty() {
+        ours = find_notepads()
+            .into_iter()
+            .filter(|(h, _)| window_title(*h).contains(&unique))
+            .collect();
+        if !ours.is_empty() {
             break;
         }
     }
-    assert_eq!(windows.len(), 1, "expected exactly one Notepad window, got {windows:?}");
-    let (hwnd, pid) = windows[0];
+    assert_eq!(ours.len(), 1, "expected exactly one of our Notepad windows, got {ours:?}");
+    let (hwnd, pid) = ours[0];
     guard.pid = Some(pid);
     std::thread::sleep(Duration::from_millis(800));
 
@@ -224,7 +230,7 @@ fn wav_to_notepad() {
         });
         assert!(focused, "could not focus test Notepad");
         assert!(
-            window_title(hwnd).contains(name),
+            window_title(hwnd).contains(&unique),
             "window is not our temp document: {:?}",
             window_title(hwnd)
         );
@@ -233,7 +239,7 @@ fn wav_to_notepad() {
         insert_text(text, PasteMethod::CtrlV, Some(hwnd)).expect("insert");
         std::thread::sleep(Duration::from_millis(600));
         assert!(
-            focus_window(hwnd) && window_title(hwnd).contains(name),
+            focus_window(hwnd) && window_title(hwnd).contains(&unique),
             "lost focus / wrong document before capture"
         );
         select_all();

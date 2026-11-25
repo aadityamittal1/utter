@@ -3,6 +3,7 @@
 
 use crate::app_state::AppState;
 use crate::audio::capture::list_input_devices;
+use crate::hotkeys::action::Action;
 use crate::hotkeys::hook_windows::{cancel_capture, capture_next_chord};
 use crate::llm::client::{ClaudeClient, LlmError};
 use crate::pipeline::machine::PillInput;
@@ -55,8 +56,35 @@ pub fn err<E: std::fmt::Display>(e: E) -> String {
 
 // ---- settings ----
 
-/// Persist `s`, apply side effects of what changed, and notify the UI.
+/// Replace the settings (serialised with every other settings write).
 pub fn apply_settings(st: &Arc<AppState>, new: Settings) -> CmdResult<Settings> {
+    let _guard = st.settings_lock.lock();
+    apply_locked(st, new)
+}
+
+/// Read-modify-write under the settings lock, so concurrent writers never lose each other's edits.
+pub fn update_settings_with(
+    st: &Arc<AppState>,
+    f: impl FnOnce(&mut Settings),
+) -> CmdResult<Settings> {
+    let _guard = st.settings_lock.lock();
+    let mut s = st.settings_snapshot();
+    f(&mut s);
+    apply_locked(st, s)
+}
+
+/// First chord of a transform's shortcut as stored in `settings.shortcuts["transform:<id>"]`.
+fn transform_chord(s: &Settings, id: &str) -> Option<String> {
+    s.shortcuts
+        .get(&Action::Transform(id.to_string()))
+        .and_then(|v| v.first())
+        .filter(|c| !c.trim().is_empty())
+        .cloned()
+}
+
+/// Persist `new`, apply side effects of what changed, and notify the UI. Caller holds
+/// `settings_lock`.
+fn apply_locked(st: &Arc<AppState>, new: Settings) -> CmdResult<Settings> {
     let old = st.settings_snapshot();
     settings::save(&st.settings_path(), &new).map_err(|e| format!("Couldn't save settings: {e}"))?;
     *st.settings.write() = new.clone();
@@ -64,13 +92,23 @@ pub fn apply_settings(st: &Arc<AppState>, new: Settings) -> CmdResult<Settings> 
         st.drop_recorder();
     }
     if old.shortcuts != new.shortcuts {
+        // settings.shortcuts is the source of truth; mirror transform shortcuts onto the rows.
+        for t in st.db.transforms_list() {
+            let want = transform_chord(&new, &t.id);
+            if want != t.shortcut {
+                let mut t2 = t.clone();
+                t2.shortcut = want;
+                let _ = st.db.transforms_update(&t2);
+            }
+        }
         st.rebuild_bindings();
     }
     if old.launch_at_login != new.launch_at_login {
         set_autostart(&st.app, new.launch_at_login);
     }
     if old.show_pill != new.show_pill {
-        crate::windows::sync_pill(&st.app, &st.pill.lock().clone(), st.pill_allowed());
+        let cur = st.pill.lock().clone();
+        crate::windows::sync_pill(&st.app, &cur, st.pill_allowed());
     }
     if old.history_retention != new.history_retention && new.history_retention != Retention::Forever {
         st.purge_history();
@@ -99,16 +137,12 @@ pub async fn update_settings(st: St<'_>, settings: Settings) -> CmdResult<Settin
 
 #[tauri::command]
 pub async fn reset_shortcuts(st: St<'_>) -> CmdResult<Settings> {
-    let mut s = st.settings_snapshot();
-    s.reset_shortcuts();
-    apply_settings(&st, s)
+    update_settings_with(&st, |s| s.reset_shortcuts())
 }
 
 #[tauri::command]
 pub async fn complete_onboarding(st: St<'_>) -> CmdResult<()> {
-    let mut s = st.settings_snapshot();
-    s.onboarded = true;
-    apply_settings(&st, s).map(|_| ())
+    update_settings_with(&st, |s| s.onboarded = true).map(|_| ())
 }
 
 #[tauri::command]
@@ -222,11 +256,13 @@ pub fn download_model(st: St, id: String) -> CmdResult<()> {
             Ok(_) => {
                 emit_progress(&state, &id, info.size_bytes, info.size_bytes, true, None);
                 // First run: make the model that just arrived the active one.
+                let _guard = state.settings_lock.lock();
                 let cur = state.settings_snapshot();
                 if !state.model_downloaded(&cur.active_model) {
                     let mut s = cur;
                     s.active_model = id.clone();
-                    let _ = apply_settings(&state, s);
+                    let _ = apply_locked(&state, s);
+                    drop(_guard);
                     preload_engine(&state);
                 }
             }
@@ -286,10 +322,8 @@ pub async fn set_active_model(st: St<'_>, id: String) -> CmdResult<()> {
     if !st.model_downloaded(&id) {
         return Err("Download the model first".into());
     }
-    let mut s = st.settings_snapshot();
-    s.active_model = id;
     st.unload_engine();
-    apply_settings(&st, s)?;
+    update_settings_with(&st, |s| s.active_model = id)?;
     preload_engine(st.inner());
     Ok(())
 }
@@ -305,6 +339,9 @@ pub async fn list_microphones() -> Vec<String> {
 
 #[tauri::command]
 pub async fn start_mic_test(st: St<'_>) -> CmdResult<()> {
+    if st.is_session_active() {
+        return Err("Finish dictating first".into());
+    }
     let state = st.inner().clone();
     tauri::async_runtime::spawn_blocking(move || -> CmdResult<()> {
         let rec = state.recorder().map_err(|_| "Microphone unavailable".to_string())?;
@@ -320,10 +357,12 @@ pub async fn start_mic_test(st: St<'_>) -> CmdResult<()> {
 pub async fn stop_mic_test(st: St<'_>) -> CmdResult<()> {
     let state = st.inner().clone();
     tauri::async_runtime::spawn_blocking(move || {
-        if std::mem::take(&mut *state.mic_testing.lock()) {
+        if *state.mic_testing.lock() {
+            // Stop through the recorder the test used, then clear the flag.
             if let Ok(r) = state.recorder() {
                 let _ = r.stop();
             }
+            *state.mic_testing.lock() = false;
         }
     })
     .await
@@ -359,15 +398,16 @@ pub fn pill_action(st: St, action: String) -> CmdResult<()> {
             let _ = st.session_tx.send(SessionMsg::Pill(PillInput::Cancel));
         }
         "retry" => {
-            let id = st.last_failed.lock().take();
-            if let Some(id) = id {
+            // Only while the current pill is a retryable transcription failure.
+            if let Some(id) = st.take_retry_target() {
                 let state = st.inner().clone();
                 std::thread::spawn(move || retry_into_focus(&state, id));
             }
         }
         "hide1h" => {
             *st.pill_hidden_until.lock() = Some(Instant::now() + Duration::from_secs(3600));
-            crate::windows::sync_pill(&st.app, &st.pill.lock().clone(), false);
+            let cur = st.pill.lock().clone();
+            crate::windows::sync_pill(&st.app, &cur, false);
             let state = st.inner().clone();
             std::thread::spawn(move || {
                 std::thread::sleep(Duration::from_secs(3600));
@@ -397,9 +437,31 @@ fn retry_into_focus(st: &Arc<AppState>, id: i64) {
                 Err(_) => st.pill_error("dictate", "Couldn't paste, text is on your clipboard", 4000),
             }
         }
-        Err(msg) => {
-            *st.last_failed.lock() = Some(id);
-            st.pill_error("dictate", &msg, 3500);
-        }
+        Err(msg) => st.pill_error("dictate", &msg, 3500),
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn transform_chord_reads_first_nonempty_settings_entry() {
+        let mut s = Settings::default();
+        assert_eq!(transform_chord(&s, "polish").as_deref(), Some("Alt+Shift+1"));
+        s.shortcuts.insert(Action::Transform("polish".into()), vec![]);
+        assert_eq!(transform_chord(&s, "polish"), None);
+        s.shortcuts.insert(Action::Transform("x".into()), vec!["  ".into()]);
+        assert_eq!(transform_chord(&s, "x"), None);
+        assert_eq!(transform_chord(&s, "missing"), None);
+    }
+
+    #[test]
+    fn ids_round_trip_as_strings() {
+        let v = ipc(&serde_json::json!({"id": 7, "word": "x"}));
+        assert_eq!(v["id"], "7");
+        let back: serde_json::Value = from_ipc(v).unwrap();
+        assert_eq!(back["id"], 7);
+        assert!(parse_id("abc").is_err());
     }
 }

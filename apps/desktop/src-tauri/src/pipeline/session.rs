@@ -7,6 +7,7 @@ use super::process::{
 };
 use super::route::Mode;
 use crate::app_state::{AppState, LastResult, PillKind};
+use crate::audio::capture::Recorder;
 use crate::audio::wav;
 use crate::context::classify::{classify, display_name, AppInfo};
 use crate::context::foreground_windows::foreground_app;
@@ -32,6 +33,8 @@ pub enum SessionMsg {
 }
 
 struct Active {
+    /// The recorder this session started; stopped through this handle even if settings change.
+    recorder: Arc<Recorder>,
     mode: Mode,
     app: Option<AppInfo>,
     category: Category,
@@ -214,11 +217,14 @@ impl Worker {
     fn start(&mut self, mode: Mode, locked: bool) -> bool {
         let st = self.st.clone();
         let settings = st.settings_snapshot();
-        if std::mem::take(&mut *st.mic_testing.lock()) {
+        // A new dictation ends a mic test first (stop through the recorder the test used).
+        if *st.mic_testing.lock() {
             if let Ok(r) = st.recorder() {
                 let _ = r.stop();
             }
+            *st.mic_testing.lock() = false;
         }
+        *st.last_failed.lock() = None;
         let app = foreground_app();
         let (category, app_name) = match &app {
             Some(a) if settings.context_awareness => {
@@ -228,15 +234,19 @@ impl Worker {
             None => (Category::Other, "Unknown".to_string()),
         };
         let rec = st.recorder();
-        let started = rec.and_then(|r| r.start());
-        if let Err(e) = started {
-            log::warn!("microphone unavailable: {e}");
-            if settings.sounds {
-                sounds::play(Sound::Error);
+        let started = rec.and_then(|r| r.start().map(|()| r));
+        let recorder = match started {
+            Ok(r) => r,
+            Err(e) => {
+                log::warn!("microphone unavailable: {e}");
+                if settings.sounds {
+                    sounds::play(Sound::Error);
+                }
+                st.pill_error(mode_str(mode), "Microphone unavailable", 3000);
+                return false;
             }
-            st.pill_error(mode_str(mode), "Microphone unavailable", 3000);
-            return false;
-        }
+        };
+        st.set_session_active(true);
         self.set_recording(true);
         if settings.sounds {
             sounds::play(Sound::Start);
@@ -248,6 +258,7 @@ impl Worker {
             None,
         );
         self.active = Some(Active {
+            recorder,
             mode,
             app,
             category,
@@ -261,10 +272,10 @@ impl Worker {
 
     fn discard(&mut self) {
         self.set_recording(false);
-        if let Ok(r) = self.st.recorder() {
-            let _ = r.stop();
+        if let Some(a) = self.active.take() {
+            let _ = a.recorder.stop();
         }
-        self.active = None;
+        self.st.set_session_active(false);
         self.st.pill_idle();
     }
 
@@ -272,7 +283,8 @@ impl Worker {
         self.set_recording(false);
         let Some(active) = self.active.take() else { return };
         let st = self.st.clone();
-        let samples = st.recorder().map(|r| r.stop()).unwrap_or_default();
+        let samples = active.recorder.stop();
+        st.set_session_active(false);
         let dur_ms = samples.len() as u64 * 1000 / 16_000;
         if dur_ms < MIN_RECORDING_MS {
             st.pill_idle();
@@ -283,9 +295,8 @@ impl Worker {
         }
         st.set_pill(PillKind::Thinking, mode_str(active.mode), dur_ms, None);
         self.process(active, samples, dur_ms);
-        // Anything pressed while we were busy is stale.
-        while self.rx.try_recv().is_ok() {}
-        self.state = State::Idle;
+        // Events queued while processing stay in the channel; the run loop replays them
+        // through the state machine in order (a queued press+release is a discarded tap).
     }
 
     // ---- processing ----
@@ -294,6 +305,8 @@ impl Worker {
         if self.st.settings.read().sounds {
             sounds::play(Sound::Error);
         }
+        // Not a retryable transcription failure: a stale Retry target must not survive.
+        *self.st.last_failed.lock() = None;
         self.st.pill_error(mode, msg, ms);
     }
 
@@ -304,7 +317,11 @@ impl Worker {
         let method = paste_method_for(a.app.as_ref().map(|x| x.process.as_str()).unwrap_or(""));
 
         // Command mode: grab the selection now that the chord keys are released.
-        let selection = if a.mode == Mode::Command {
+        let same_window = match (&a.app, foreground_app()) {
+            (Some(at_press), Some(now)) => at_press.hwnd == now.hwnd,
+            _ => false,
+        };
+        let selection = if a.mode == Mode::Command && same_window {
             capture_selection(method).filter(|s| !s.trim().is_empty())
         } else {
             None
@@ -331,8 +348,14 @@ impl Worker {
                 Ok(t) => raw = t,
                 Err(e) => {
                     log::error!("transcription failed: {e}");
-                    self.record_failure(&a, &samples, dur_ms);
-                    self.fail(mode_s, "Transcription failed", 3000);
+                    if self.record_failure(&a, &samples, dur_ms) {
+                        if st.settings.read().sounds {
+                            sounds::play(Sound::Error);
+                        }
+                        st.pill_error_retryable(mode_s, "Transcription failed", 3500);
+                    } else {
+                        self.fail(mode_s, "Transcription failed", 3000);
+                    }
                     return;
                 }
             }
@@ -364,6 +387,7 @@ impl Worker {
                     log::warn!("insert failed: {e}");
                 }
                 *st.last.lock() = Some(LastResult { text: r.text.clone() });
+                *st.last_failed.lock() = None;
                 self.record(
                     &a.app_name,
                     a.category,
@@ -385,13 +409,17 @@ impl Worker {
     }
 
     /// Store a failed transcription with its audio so it can be retried.
-    fn record_failure(&self, a: &Active, samples: &[f32], dur_ms: u64) {
+    /// Returns true when the row and its audio were saved (so the pill may offer Retry).
+    fn record_failure(&self, a: &Active, samples: &[f32], dur_ms: u64) -> bool {
         let st = &self.st;
         if st.settings.read().history_retention == Retention::Never {
-            return;
+            return false;
         }
         let created = chrono::Utc::now().timestamp_millis();
-        let path = save_audio(st, created, samples);
+        let Some(path) = save_audio(st, created, samples) else {
+            return false;
+        };
+        let path = Some(path);
         let row = NewHistory {
             created_at: created,
             app_name: a.app_name.clone(),
@@ -405,9 +433,13 @@ impl Worker {
             audio_path: path,
             error: Some("Transcription failed".into()),
         };
-        if let Ok(id) = st.db.insert_history(&row) {
-            *st.last_failed.lock() = Some(id);
-            st.emit("history://changed", ());
+        match st.db.insert_history(&row) {
+            Ok(id) => {
+                *st.last_failed.lock() = Some(id);
+                st.emit("history://changed", ());
+                true
+            }
+            Err(_) => false,
         }
     }
 
@@ -523,8 +555,12 @@ impl Worker {
         let target = app.as_ref().map(|a| a.hwnd).filter(|h| *h != 0);
         let pasted = insert_text(&out, method, target);
         *st.last.lock() = Some(LastResult { text: out.clone() });
+        *st.last_failed.lock() = None;
         let (category, app_name) = match &app {
-            Some(a) => (classify(a, &settings.category_rules), display_name(a)),
+            Some(a) if settings.context_awareness => {
+                (classify(a, &settings.category_rules), display_name(a))
+            }
+            Some(a) => (Category::Other, display_name(a)),
             None => (Category::Other, "Unknown".to_string()),
         };
         self.record(

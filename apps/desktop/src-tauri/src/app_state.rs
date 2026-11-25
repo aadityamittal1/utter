@@ -13,7 +13,7 @@ use parking_lot::{Mutex, RwLock};
 use serde::Serialize;
 use std::collections::HashMap;
 use std::path::PathBuf;
-use std::sync::atomic::{AtomicU64, Ordering};
+use std::sync::atomic::{AtomicBool, AtomicU64, Ordering};
 use std::sync::mpsc::Sender;
 use std::sync::Arc;
 use std::time::{Duration, Instant};
@@ -39,6 +39,19 @@ pub struct PillState {
     pub elapsed_ms: u64,
     #[serde(skip_serializing_if = "Option::is_none")]
     pub message: Option<String>,
+    /// True only for a failed transcription whose audio was saved (the pill may offer Retry).
+    pub retryable: bool,
+}
+
+/// May a pill Retry act on this state? Only a retryable transcription-failure error.
+pub fn retry_allowed(p: &PillState) -> bool {
+    p.state == PillKind::Error && p.retryable
+}
+
+/// Keep the current recorder (instead of rebuilding it for new microphone settings) while it
+/// matches, or while a dictation or mic test is using it.
+fn keep_recorder(same_settings: bool, session_active: bool, mic_testing: bool) -> bool {
+    same_settings || session_active || mic_testing
 }
 
 impl PillState {
@@ -48,6 +61,7 @@ impl PillState {
             mode: "dictate".into(),
             elapsed_ms: 0,
             message: None,
+            retryable: false,
         }
     }
 }
@@ -81,6 +95,10 @@ pub struct AppState {
     /// History id of the last transcription that failed (pill "retry").
     pub last_failed: Mutex<Option<i64>>,
     pub mic_testing: Mutex<bool>,
+    /// True from a successful recording start until its audio is collected.
+    session_active: AtomicBool,
+    /// Serialises settings read-modify-write cycles.
+    pub settings_lock: Mutex<()>,
     pub paused_until: Mutex<Option<Instant>>,
     pub pill_hidden_until: Mutex<Option<Instant>>,
     pub pill: Mutex<PillState>,
@@ -110,6 +128,8 @@ impl AppState {
             last: Mutex::new(None),
             last_failed: Mutex::new(None),
             mic_testing: Mutex::new(false),
+            session_active: AtomicBool::new(false),
+            settings_lock: Mutex::new(()),
             paused_until: Mutex::new(None),
             pill_hidden_until: Mutex::new(None),
             pill: Mutex::new(PillState::idle()),
@@ -177,14 +197,22 @@ impl AppState {
 
     /// Publish a pill state. Returns the generation, used by timed resets.
     pub fn set_pill(&self, kind: PillKind, mode: &str, elapsed_ms: u64, message: Option<String>) -> u64 {
-        let gen = self.pill_gen.fetch_add(1, Ordering::SeqCst) + 1;
-        let st = PillState {
+        self.publish_pill(PillState {
             state: kind,
             mode: mode.to_string(),
             elapsed_ms,
             message,
-        };
-        *self.pill.lock() = st.clone();
+            retryable: false,
+        })
+    }
+
+    fn publish_pill(&self, st: PillState) -> u64 {
+        let kind = st.state;
+        let gen = self.pill_gen.fetch_add(1, Ordering::SeqCst) + 1;
+        // The mutex is released before any Tauri call below (never held across getters).
+        {
+            *self.pill.lock() = st.clone();
+        }
         self.emit("pill://state", st.clone());
         crate::windows::sync_pill(&self.app, &st, self.pill_allowed());
         crate::tray::sync_icon(&self.app, matches!(kind, PillKind::Listening | PillKind::Locked), self.is_paused());
@@ -205,6 +233,34 @@ impl AppState {
 
     pub fn pill_error(self: &Arc<Self>, mode: &str, message: &str, ms: u64) {
         self.set_pill_timed(PillKind::Error, mode, Some(message.to_string()), ms);
+    }
+
+    /// A failed transcription whose audio was saved: the pill may offer Retry.
+    pub fn pill_error_retryable(self: &Arc<Self>, mode: &str, message: &str, ms: u64) {
+        let gen = self.publish_pill(PillState {
+            state: PillKind::Error,
+            mode: mode.to_string(),
+            elapsed_ms: 0,
+            message: Some(message.to_string()),
+            retryable: true,
+        });
+        let me = self.clone();
+        std::thread::spawn(move || {
+            std::thread::sleep(Duration::from_millis(ms));
+            if me.pill_gen.load(Ordering::SeqCst) == gen {
+                me.set_pill(PillKind::Idle, "dictate", 0, None);
+            }
+        });
+    }
+
+    /// The history id a pill Retry may re-run: only while the CURRENT pill is a retryable error.
+    pub fn take_retry_target(&self) -> Option<i64> {
+        let p = self.pill.lock().clone();
+        if retry_allowed(&p) {
+            self.last_failed.lock().take()
+        } else {
+            None
+        }
     }
 
     pub fn pill_idle(&self) {
@@ -232,7 +288,11 @@ impl AppState {
         drop(s);
         let mut slot = self.recorder.lock();
         if let Some(r) = slot.as_ref() {
-            if r.device == device && r.keep_warm == keep_warm {
+            // While a dictation is recording the recorder must not change under it; a new
+            // microphone setting takes effect at the next idle call.
+            let same = r.device == device && r.keep_warm == keep_warm;
+            let testing = *self.mic_testing.lock();
+            if keep_recorder(same, self.is_session_active(), testing) {
                 return Ok(r.recorder.clone());
             }
         }
@@ -256,9 +316,21 @@ impl AppState {
         Ok(rec)
     }
 
-    /// Forget the recorder so the next use re-reads microphone settings.
+    /// Forget the recorder so the next use re-reads microphone settings. Deferred (no-op)
+    /// while a dictation or mic test is using it; `recorder()` re-checks when idle.
     pub fn drop_recorder(&self) {
+        if self.is_session_active() || *self.mic_testing.lock() {
+            return;
+        }
         *self.recorder.lock() = None;
+    }
+
+    pub fn is_session_active(&self) -> bool {
+        self.session_active.load(Ordering::SeqCst)
+    }
+
+    pub fn set_session_active(&self, on: bool) {
+        self.session_active.store(on, Ordering::SeqCst);
     }
 
     // ---- whisper ----
@@ -312,5 +384,46 @@ impl AppState {
             self.delete_audio_files(paths);
             self.emit("history://changed", ());
         }
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    fn pill(state: PillKind, retryable: bool) -> PillState {
+        PillState {
+            state,
+            mode: "dictate".into(),
+            elapsed_ms: 0,
+            message: None,
+            retryable,
+        }
+    }
+
+    #[test]
+    fn retry_only_for_retryable_errors() {
+        assert!(retry_allowed(&pill(PillKind::Error, true)));
+        assert!(!retry_allowed(&pill(PillKind::Error, false)));
+        assert!(!retry_allowed(&pill(PillKind::Idle, true)));
+        assert!(!retry_allowed(&pill(PillKind::Thinking, true)));
+        assert!(!retry_allowed(&PillState::idle()));
+    }
+
+    #[test]
+    fn pill_state_serializes_retryable_camel_case() {
+        let v = serde_json::to_value(pill(PillKind::Error, true)).unwrap();
+        assert_eq!(v["retryable"], true);
+        assert_eq!(v["state"], "error");
+        assert_eq!(v["elapsedMs"], 0);
+        assert_eq!(serde_json::to_value(PillState::idle()).unwrap()["retryable"], false);
+    }
+
+    #[test]
+    fn recorder_is_never_replaced_while_in_use() {
+        assert!(keep_recorder(true, false, false));
+        assert!(!keep_recorder(false, false, false));
+        assert!(keep_recorder(false, true, false), "dictation in progress");
+        assert!(keep_recorder(false, false, true), "mic test in progress");
     }
 }

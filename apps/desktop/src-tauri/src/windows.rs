@@ -55,8 +55,9 @@ fn place_pill(app: &AppHandle, w: &WebviewWindow) {
         (wa.position.x, wa.position.y, wa.size.width, wa.size.height),
         m.scale_factor(),
     );
-    let _ = w.set_size(PhysicalSize::new(pw, ph));
+    // Position first: sizing a window that still sits on another monitor can be rescaled.
     let _ = w.set_position(PhysicalPosition::new(x, y));
+    let _ = w.set_size(PhysicalSize::new(pw, ph));
 }
 
 /// Show without activating and keep above other topmost windows.

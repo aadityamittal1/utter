@@ -222,6 +222,25 @@ mod tests {
     }
 
     #[test]
+    fn replayed_press_and_release_is_a_clean_cycle() {
+        // Events queued while processing are replayed in order after the session ends.
+        let (s, c) = run(&[
+            hk(Pressed(Action::Dictate)),
+            hk(Released(Action::Dictate)),
+            hk(Pressed(Action::Dictate)),
+        ]);
+        assert_eq!(s, State::Recording { mode: Mode::Dictate, locked: false });
+        assert_eq!(
+            c,
+            vec![
+                Cmd::Start { mode: Mode::Dictate, locked: false },
+                Cmd::Finish,
+                Cmd::Start { mode: Mode::Dictate, locked: false },
+            ]
+        );
+    }
+
+    #[test]
     fn idle_ignores_stray_events() {
         for e in [
             hk(Released(Action::Dictate)),

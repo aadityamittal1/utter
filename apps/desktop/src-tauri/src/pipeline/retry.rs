@@ -32,6 +32,7 @@ pub fn retry_history(st: &AppState, id: i64) -> Result<HistoryItem, String> {
     };
     let mode = match item.mode {
         HistoryMode::DictateEnhance => Mode::DictateEnhance,
+        HistoryMode::Command => Mode::Command,
         _ => Mode::Dictate,
     };
     let key = st.api_key();
@@ -54,12 +55,16 @@ pub fn retry_history(st: &AppState, id: i64) -> Result<HistoryItem, String> {
         .map_err(|e| e.to_string())?;
     let res = match rt.block_on(run_text_stage(&input)) {
         TextOutcome::Text(r) => r,
-        _ => return Err("Didn't catch that".into()),
+        TextOutcome::NeedKey => return Err("Add an API key to use commands".into()),
+        TextOutcome::CommandFailed => return Err("Couldn't run that command".into()),
+        TextOutcome::Nothing => return Err("Didn't catch that".into()),
     };
     if let Some(u) = &res.usage {
         let day = chrono::Local::now().format("%Y-%m-%d").to_string();
         let _ = st.db.add_usage(&day, &u.model, u.input, u.output);
     }
+    // keepAudio off: the recording is not kept after a successful retry.
+    let keep_audio = settings.keep_audio;
     let row = NewHistory {
         created_at: item.created_at,
         app_name: item.app_name.clone(),
@@ -70,12 +75,15 @@ pub fn retry_history(st: &AppState, id: i64) -> Result<HistoryItem, String> {
         duration_ms: item.duration_ms,
         words: word_count(&res.text),
         used_ai: res.used_ai,
-        audio_path: Some(path),
+        audio_path: keep_audio.then(|| path.clone()),
         error: None,
     };
-    // Replace the row but keep the audio file (the returned path is the same file).
-    let _ = st.db.delete_history(id);
+    // Insert the new row first so a failure never loses the item, then drop the old one.
     let new_id = st.db.insert_history(&row).map_err(|e| e.to_string())?;
+    let _ = st.db.delete_history(id);
+    if !keep_audio {
+        let _ = std::fs::remove_file(&path);
+    }
     *st.last.lock() = Some(crate::app_state::LastResult { text: res.text });
     st.emit("history://changed", ());
     st.db.get_history(new_id).ok_or_else(|| "Retry failed".to_string())
