@@ -1,0 +1,10 @@
+:root {
+  --ink: #14131a;
+  --paper: #faf8f5;
+  --ember: #ff5a36;
+  --ember-dark: #e0401e;
+  --lilac: #8b7cf6;
+  --font-ui: "Inter", system-ui, sans-serif;
+  --font-display: "Instrument Serif", Georgia, serif;
+  --font-mono: "JetBrains Mono", ui-monospace, monospace;
+}
