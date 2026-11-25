@@ -186,7 +186,12 @@ fn wav_to_notepad() {
     // 2. Launch our own Notepad on a temp file.
     let clipboard = ClipboardSnapshot::take();
     let name = "utter_pipeline_e2e";
-    let tmp = std::env::temp_dir().join(format!("{name}.txt"));
+    // Unique per run: Notepad restores unsaved tabs by path and shows a modal "Keep unsaved
+    // changes?" dialog that swallows all injected keys if a previous run left one behind.
+    let stamp = std::time::SystemTime::now()
+        .duration_since(std::time::UNIX_EPOCH)
+        .map_or(0, |d| d.as_nanos());
+    let tmp = std::env::temp_dir().join(format!("{name}_{stamp}.txt"));
     std::fs::write(&tmp, "").expect("temp file");
     let child = std::process::Command::new("notepad.exe")
         .arg(&tmp)
@@ -209,7 +214,15 @@ fn wav_to_notepad() {
 
     // 3. Paste each result, verifying the window is ours before every keystroke.
     let check = |text: &str, label: &str| {
-        assert!(focus_window(hwnd), "could not focus test Notepad");
+        // A freshly launched background process may be denied foreground at first; retry.
+        let focused = (0..6).any(|_| {
+            let ok = focus_window(hwnd);
+            if !ok {
+                std::thread::sleep(Duration::from_millis(300));
+            }
+            ok
+        });
+        assert!(focused, "could not focus test Notepad");
         assert!(
             window_title(hwnd).contains(name),
             "window is not our temp document: {:?}",

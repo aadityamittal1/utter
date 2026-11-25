@@ -18,8 +18,8 @@ use super::clipboard_windows::{
     ClipboardSnapshot,
 };
 use super::{
-    capture_allowed, wait_for_modifiers_released, PasteMethod, RestoreCoordinator, MODIFIER_KEYS,
-    VK_CONTROL, VK_SHIFT,
+    capture_allowed, modifiers_to_release, wait_for_modifiers_released, PasteMethod,
+    RestoreCoordinator, VK_CONTROL, VK_SHIFT,
 };
 
 /// Tag placed in `dwExtraInfo` of every key event we inject so the keyboard hook can ignore them.
@@ -79,11 +79,16 @@ pub fn is_key_down(vk: u16) -> bool {
     (unsafe { GetAsyncKeyState(vk as i32) } as u16) & 0x8000 != 0
 }
 
+/// Key-up only the modifiers that are actually down. An unmatched Alt key-up makes WinUI apps
+/// (new Notepad) enter menu / access-key mode, which then swallows the paste or copy chord.
 fn release_all_modifiers() -> anyhow::Result<()> {
-    let ups: Vec<INPUT> = MODIFIER_KEYS
-        .iter()
-        .map(|&vk| key_input(vk, true, false))
+    let ups: Vec<INPUT> = modifiers_to_release(is_key_down)
+        .into_iter()
+        .map(|vk| key_input(vk, true, false))
         .collect();
+    if ups.is_empty() {
+        return Ok(());
+    }
     send_all(&ups)
 }
 
@@ -324,7 +329,12 @@ mod tests {
             "close all Notepad windows before running this test"
         );
         let clipboard = ClipboardSnapshot::take();
-        let tmp = std::env::temp_dir().join("utter_insert_test.txt");
+        // Unique per run: Notepad restores unsaved tabs by path and shows a modal "Keep unsaved
+        // changes?" dialog that swallows all injected keys if a previous run left one behind.
+        let stamp = std::time::SystemTime::now()
+            .duration_since(std::time::UNIX_EPOCH)
+            .map_or(0, |d| d.as_nanos());
+        let tmp = std::env::temp_dir().join(format!("utter_insert_test_{stamp}.txt"));
         std::fs::write(&tmp, "").expect("temp file");
         let child = std::process::Command::new("notepad.exe")
             .arg(&tmp)
@@ -355,7 +365,15 @@ mod tests {
         std::thread::sleep(Duration::from_millis(800));
 
         let name = "utter_insert_test";
-        assert!(focus(hwnd), "could not focus test Notepad");
+        // A freshly launched background process may be denied foreground at first; retry.
+        let focused = (0..6).any(|_| {
+            let ok = focus(hwnd);
+            if !ok {
+                std::thread::sleep(Duration::from_millis(300));
+            }
+            ok
+        });
+        assert!(focused, "could not focus test Notepad");
         assert!(
             window_title(hwnd).contains(name),
             "window is not our temp document: {:?}",

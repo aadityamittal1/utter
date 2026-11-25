@@ -108,11 +108,12 @@ fn set_text_inner(text: &str, private: bool) -> anyhow::Result<u32> {
     let mut wide: Vec<u16> = text.encode_utf16().collect();
     wide.push(0);
     let bytes: Vec<u8> = wide.iter().flat_map(|w| w.to_le_bytes()).collect();
-    let _g = ClipboardGuard::open()?;
-    // SAFETY: clipboard is open.
-    unsafe { EmptyClipboard()? };
-    put_bytes(CF_UNICODETEXT, &bytes)?;
-    if private {
+    {
+        let _g = ClipboardGuard::open()?;
+        // SAFETY: clipboard is open.
+        unsafe { EmptyClipboard()? };
+        put_bytes(CF_UNICODETEXT, &bytes)?;
+        if private {
         // Keep dictated text out of clipboard history / cloud clipboard / clipboard monitors.
         put_dword_format(
             ::windows::core::w!("ExcludeClipboardContentFromMonitorProcessing"),
@@ -120,8 +121,10 @@ fn set_text_inner(text: &str, private: bool) -> anyhow::Result<u32> {
         );
         put_dword_format(::windows::core::w!("CanIncludeInClipboardHistory"), 0);
         put_dword_format(::windows::core::w!("CanUploadToCloudClipboard"), 0);
-    }
-    // Read while still open so nothing can slip in between our set and the sequence read.
+        }
+    } // clipboard closed here
+    // CloseClipboard itself bumps the sequence number, so it must be read AFTER closing;
+    // reading while open yields a stale value and the restore would never fire.
     Ok(clipboard_seq())
 }
 
@@ -275,6 +278,20 @@ mod tests {
         assert!(!skip_format(CF_UNICODETEXT));
         assert!(!skip_format(8));
         assert!(!skip_format(15));
+    }
+
+    /// Regression: the returned seq must still be current after the set returns (CloseClipboard
+    /// bumps it), otherwise `should_restore` can never succeed.
+    #[test]
+    #[ignore = "uses the real system clipboard"]
+    fn returned_seq_is_current_after_set() {
+        let saved = ClipboardSnapshot::take();
+        let seq = set_clipboard_text_private("utter seq test").expect("set");
+        let now = clipboard_seq();
+        if let Some(s) = saved {
+            s.restore();
+        }
+        assert_eq!(seq, now);
     }
 
     #[test]

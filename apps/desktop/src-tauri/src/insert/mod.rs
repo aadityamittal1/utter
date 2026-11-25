@@ -102,6 +102,15 @@ impl<S> Default for RestoreCoordinator<S> {
         Self::new()
     }
 }
+/// Modifiers that are currently down and so need a synthetic key-up.
+pub fn modifiers_to_release(is_down: impl Fn(u16) -> bool) -> Vec<u16> {
+    MODIFIER_KEYS
+        .iter()
+        .copied()
+        .filter(|&vk| is_down(vk))
+        .collect()
+}
+
 /// Poll (every 10 ms) until no modifier key is physically down. Returns false on timeout.
 pub fn wait_for_modifiers_released(is_down: impl Fn(u16) -> bool, timeout: Duration) -> bool {
     let deadline = Instant::now() + timeout;
@@ -124,6 +133,15 @@ mod tests {
     fn should_restore_only_when_seq_unchanged() {
         assert!(should_restore(5, 5));
         assert!(!should_restore(5, 6));
+    }
+
+    #[test]
+    fn releases_only_modifiers_that_are_down() {
+        assert_eq!(modifiers_to_release(|_| false), Vec::<u16>::new());
+        assert_eq!(
+            modifiers_to_release(|vk| vk == VK_SHIFT || vk == VK_LWIN),
+            vec![VK_SHIFT, VK_LWIN]
+        );
     }
 
     #[test]
