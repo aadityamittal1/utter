@@ -83,6 +83,10 @@ pub struct Matcher {
     swallowed: BTreeSet<Key>,
     swallow_up: Option<Key>,
     mask_pending: bool,
+    /// A chord containing Win/Alt fired during the current hold (cleared when all keys are up).
+    fired_mask: bool,
+    /// The event just processed is a Win/Alt key-up that needs a mask key first.
+    mask_up: bool,
 }
 
 impl Matcher {
@@ -97,6 +101,8 @@ impl Matcher {
             swallowed: BTreeSet::new(),
             swallow_up: None,
             mask_pending: false,
+            fired_mask: false,
+            mask_up: false,
         }
     }
 
@@ -107,11 +113,37 @@ impl Matcher {
         self.recording = recording;
     }
 
-    /// Forget held keys (e.g. after a missed key-up such as Win+L).
-    pub fn reset(&mut self) {
+    /// Forget held keys (e.g. after a missed key-up such as Win+L). Returns `Cancelled` for an
+    /// in-flight hold binding so the consumer can abort cleanly.
+    pub fn reset(&mut self) -> Vec<HotkeyEvent> {
+        let ev = match &self.active {
+            Some(a) if self.is_hold(a) => {
+                vec![HotkeyEvent::Cancelled(self.bindings[a.idx].action.clone())]
+            }
+            _ => Vec::new(),
+        };
         let (bindings, recording) = (std::mem::take(&mut self.bindings), self.recording);
         *self = Matcher::new(bindings);
         self.recording = recording;
+        ev
+    }
+
+    /// Self-heal stale held keys: any held key that `is_down` reports as up is released
+    /// (emitting `Released` for an active hold binding). Call before processing a key-down,
+    /// with the key being processed reported as down.
+    pub fn prune(&mut self, is_down: impl Fn(Key) -> bool, t_ms: u64) -> Vec<HotkeyEvent> {
+        let stale: Vec<Key> = self.held.iter().copied().filter(|k| !is_down(*k)).collect();
+        let mut ev = Vec::new();
+        for k in stale {
+            ev.extend(self.on_key(k, false, t_ms));
+        }
+        ev
+    }
+
+    /// True when the event just processed is a Win/Alt key-up that follows a fired Win/Alt chord:
+    /// the hook should inject the mask key right before letting that key-up through.
+    pub fn mask_before_up(&self) -> bool {
+        self.mask_up
     }
 
     /// While on, `Cancel` bindings (Esc) are live and swallowed.
@@ -140,6 +172,7 @@ impl Matcher {
     pub fn on_key(&mut self, key: Key, down: bool, t_ms: u64) -> Vec<HotkeyEvent> {
         self.mask_pending = false;
         self.swallow_up = None;
+        self.mask_up = false;
         let mut ev = Vec::new();
         if down {
             if !self.held.insert(key) {
@@ -153,9 +186,41 @@ impl Matcher {
             if self.swallowed.remove(&key) {
                 self.swallow_up = Some(key);
             }
+            self.mask_up = self.fired_mask && matches!(key, Key::Win | Key::Alt);
             self.handle_up(key, t_ms, &mut ev);
         }
         ev
+    }
+
+    /// While a Dictate hold is active, completing the HandsFree chord (any time) locks the
+    /// recording: `Pressed(HandsFree)` without cancelling Dictate, and Dictate's release is
+    /// then silent. Returns true if handled.
+    fn try_lock_hands_free(&mut self, ev: &mut Vec<HotkeyEvent>) -> bool {
+        let (Some(a), Some(idx)) = (self.active.clone(), self.find_binding()) else {
+            return false;
+        };
+        if self.bindings[idx].action != Action::HandsFree
+            || self.bindings[a.idx].action != Action::Dictate
+        {
+            return false;
+        }
+        let chord = self.bindings[idx].chord.clone();
+        ev.push(HotkeyEvent::Pressed(Action::HandsFree));
+        if let Some(act) = self.active.as_mut() {
+            act.suppress_release = true;
+        }
+        self.note_fired(&chord);
+        true
+    }
+
+    fn note_fired(&mut self, chord: &Chord) {
+        if chord.contains(&Key::Win) || chord.contains(&Key::Alt) {
+            self.mask_pending = true;
+            self.fired_mask = true;
+        }
+        for k in chord.keys().iter().filter(|k| !k.is_modifier()) {
+            self.swallowed.insert(*k);
+        }
     }
 
     fn find_binding(&self) -> Option<usize> {
@@ -171,6 +236,9 @@ impl Matcher {
     fn handle_down(&mut self, t_ms: u64, ev: &mut Vec<HotkeyEvent>) {
         match self.active.clone() {
             Some(a) => {
+                if self.try_lock_hands_free(ev) {
+                    return;
+                }
                 if t_ms.saturating_sub(a.t_ms) > CHANGE_WINDOW_MS {
                     return; // extra keys after the window are ignored
                 }
@@ -216,12 +284,7 @@ impl Matcher {
             t_ms,
             suppress_release,
         });
-        if b.chord.contains(&Key::Win) || b.chord.contains(&Key::Alt) {
-            self.mask_pending = true;
-        }
-        for k in b.chord.keys().iter().filter(|k| !k.is_modifier()) {
-            self.swallowed.insert(*k);
-        }
+        self.note_fired(&b.chord);
     }
 
     fn handle_up(&mut self, key: Key, t_ms: u64, ev: &mut Vec<HotkeyEvent>) {
@@ -240,6 +303,7 @@ impl Matcher {
         }
         if self.held.is_empty() {
             self.dirty = false;
+            self.fired_mask = false;
         }
     }
 }
@@ -329,13 +393,131 @@ mod tests {
         let mut m = m();
         dn(&mut m, CTRL, 0);
         dn(&mut m, WIN, 10);
-        assert_eq!(
-            dn(&mut m, SPACE, 100),
-            vec![Cancelled(Action::Dictate), Pressed(Action::HandsFree)]
-        );
+        // Locks the current recording: no Cancelled(Dictate).
+        assert_eq!(dn(&mut m, SPACE, 100), vec![Pressed(Action::HandsFree)]);
+        assert!(m.should_swallow(SPACE, true));
         assert!(up(&mut m, SPACE, 160).is_empty());
+        assert!(m.should_swallow(SPACE, false));
+        // Dictate's release is silent once locked.
         assert!(up(&mut m, WIN, 170).is_empty());
         assert!(up(&mut m, CTRL, 180).is_empty());
+        // Fully released: Dictate works again, and is not a double tap.
+        dn(&mut m, CTRL, 1000);
+        assert_eq!(dn(&mut m, WIN, 1010), vec![Pressed(Action::Dictate)]);
+    }
+
+    #[test]
+    fn hands_free_lock_works_after_change_window() {
+        let mut m = m();
+        dn(&mut m, CTRL, 0);
+        dn(&mut m, WIN, 10);
+        assert_eq!(dn(&mut m, SPACE, 5000), vec![Pressed(Action::HandsFree)]);
+        assert!(m.should_swallow(SPACE, true));
+        assert!(m.take_mask_request());
+        assert!(up(&mut m, SPACE, 5100).is_empty());
+        assert!(up(&mut m, WIN, 5200).is_empty());
+        assert!(up(&mut m, CTRL, 5210).is_empty());
+    }
+
+    #[test]
+    fn hands_free_chord_without_dictate_active_still_presses() {
+        let mut m = m();
+        dn(&mut m, WIN, 0);
+        dn(&mut m, SPACE, 1);
+        assert_eq!(dn(&mut m, CTRL, 2), vec![Pressed(Action::HandsFree)]);
+    }
+
+    #[test]
+    fn double_tap_boundary_400_fires_401_does_not() {
+        for (gap, fires) in [(400u64, true), (401, false)] {
+            let mut m = m();
+            dn(&mut m, CTRL, 0);
+            dn(&mut m, WIN, 10);
+            up(&mut m, WIN, 1000);
+            up(&mut m, CTRL, 1001);
+            dn(&mut m, CTRL, 1000 + gap - 1);
+            let ev = dn(&mut m, WIN, 1000 + gap);
+            if fires {
+                assert_eq!(ev, vec![DoubleTap(Action::Dictate)]);
+            } else {
+                assert_eq!(ev, vec![Pressed(Action::Dictate)]);
+            }
+        }
+    }
+
+    #[test]
+    fn prune_drops_stale_win_so_ctrl_alone_does_not_fire() {
+        let mut m = m();
+        dn(&mut m, WIN, 0); // Win+L: key-up never seen
+        up(&mut m, Key::Vk(0x4C), 1); // unrelated
+                                      // Next real key-down is Ctrl; the OS says Win is up.
+        let pruned = m.prune(|k| k == CTRL, 5000);
+        assert!(pruned.is_empty());
+        assert!(dn(&mut m, CTRL, 5000).is_empty());
+        assert_eq!(dn(&mut m, WIN, 5010), vec![Pressed(Action::Dictate)]);
+    }
+
+    #[test]
+    fn prune_releases_active_hold_binding() {
+        let mut m = m();
+        dn(&mut m, CTRL, 0);
+        dn(&mut m, WIN, 10);
+        assert_eq!(m.prune(|k| k == CTRL, 900), vec![Released(Action::Dictate)]);
+        // Nothing left active; Ctrl alone is still held and must not re-fire.
+        assert!(up(&mut m, CTRL, 910).is_empty());
+    }
+
+    #[test]
+    fn prune_emits_nothing_for_toggle_or_keys_still_down() {
+        let mut m = m();
+        dn(&mut m, CTRL, 0);
+        dn(&mut m, WIN, 10);
+        dn(&mut m, Key::Vk(0x20), 4000); // lock (toggle-like)
+        assert!(m.prune(|_| true, 4100).is_empty());
+        let mut t = Matcher::new(vec![Binding {
+            action: Action::HandsFree,
+            chord: Chord::parse("Ctrl+Win+Space").unwrap(),
+            trigger: Trigger::Toggle,
+        }]);
+        dn(&mut t, CTRL, 0);
+        dn(&mut t, WIN, 1);
+        dn(&mut t, SPACE, 2);
+        assert!(t.prune(|_| false, 3).is_empty());
+    }
+
+    #[test]
+    fn reset_cancels_active_hold() {
+        let mut m = m();
+        dn(&mut m, CTRL, 0);
+        dn(&mut m, WIN, 10);
+        assert_eq!(m.reset(), vec![Cancelled(Action::Dictate)]);
+        assert!(m.reset().is_empty());
+    }
+
+    #[test]
+    fn mask_before_win_or_alt_key_up_after_chord_fired() {
+        let mut m = m();
+        dn(&mut m, CTRL, 0);
+        dn(&mut m, WIN, 10);
+        up(&mut m, WIN, 500);
+        assert!(m.mask_before_up());
+        up(&mut m, CTRL, 510);
+        assert!(!m.mask_before_up()); // Ctrl never needs it
+                                      // Next hold with no chord fired (Win alone): no mask.
+        dn(&mut m, WIN, 2000);
+        up(&mut m, WIN, 2100);
+        assert!(!m.mask_before_up());
+    }
+
+    #[test]
+    fn mask_before_up_for_alt_shortcut() {
+        let mut m = m();
+        dn(&mut m, ALT, 0);
+        dn(&mut m, SHIFT, 1);
+        dn(&mut m, Z, 2);
+        up(&mut m, Z, 3);
+        up(&mut m, ALT, 4);
+        assert!(m.mask_before_up());
     }
 
     #[test]
