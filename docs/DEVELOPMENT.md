@@ -24,7 +24,35 @@ Cargo build scripts fail with `LNK1104` when the build directory path is very lo
 
 ## Windows ARM64 dev machines
 
-The MSVC "ARM64 build tools" component may be missing (check for `VCToolsMSVC<ver>libarm64`). Without it the `aarch64-pc-windows-msvc` target cannot link. Either install the component (Visual Studio Installer, Individual components, "MSVC v143 - VS 2022 C++ ARM64 build tools") or build with the x64 toolchain, which runs under emulation:
+You can build natively for ARM64 (see below) or fall back to the x64 toolchain under emulation.
+
+### Native ARM64 build
+
+whisper.cpp's ggml refuses MSVC for ARM ("MSVC is not supported for ARM, use clang"), so the C/C++ parts are built with `clang-cl` through Ninja. The release workflow does the same for the `aarch64-pc-windows-msvc` leg.
+
+1. Install the Visual Studio component "MSVC v143 - VS 2022 C++ ARM64/ARM64EC build tools" (it provides `VC\Tools\MSVC\<ver>\lib\arm64`). This needs admin rights. `--passive` only works from an elevated start, for example:
+
+   ```powershell
+   Start-Process -Verb RunAs -FilePath "${env:ProgramFiles(x86)}\Microsoft Visual Studio\Installer\setup.exe" `
+     -ArgumentList 'modify --installPath "C:\Program Files\Microsoft Visual Studio\2022\<edition>" --add Microsoft.VisualStudio.Component.VC.Tools.ARM64 --passive'
+   ```
+
+2. Install LLVM (the Windows ARM64 "woa64" build) and Ninja, e.g. `winget install LLVM.LLVM` and `winget install Ninja-build.Ninja`.
+3. Set the environment, then build with the default ARM64 toolchain:
+
+   ```powershell
+   $env:CMAKE_GENERATOR = "Ninja"
+   $env:CC = "clang-cl"
+   $env:CXX = "clang-cl"
+   $env:CXXFLAGS = "/EHsc"   # clang-cl needs exceptions enabled explicitly
+   $env:LIBCLANG_PATH = "C:\Program Files\LLVM\bin"
+   $env:CARGO_TARGET_DIR = "C:\ut"   # short path, see Long paths
+   cargo test --lib
+   ```
+
+### Alternative: x64 toolchain under emulation
+
+If you would rather not install the ARM64 component, build with the x64 toolchain, which runs under emulation:
 
 ```
 rustup toolchain install stable-x86_64-pc-windows-msvc --profile minimal --force-non-host
@@ -37,14 +65,25 @@ The x64 toolchain loads an x64 `libclang.dll`: point `LIBCLANG_PATH` at an x64 L
 
 Speech engine (`apps/desktop/src-tauri/examples/bench.rs`), `ten_seconds.wav` (11.6 s of synthetic speech from `scripts/make-test-audio.ps1`), greedy decoding, English, 4 threads, release build.
 
-Machine: Snapdragon X (X1P64100, 10 cores) laptop, Windows 11 ARM64, **x64 build running under emulation** (the native ARM64 MSVC component was not installed). These numbers are therefore pessimistic and are to be re-run natively.
+Machine: Snapdragon X (X1P64100, 10 cores) laptop, Windows 11 ARM64.
+
+**Native ARM64** (release build, clang-cl, 4 threads):
 
 | Model | Load | Transcribe (11.6 s clip) |
 |---|---|---|
-| `base` (`ggml-base.bin`, 148 MB) | ~350-430 ms | 3.7-3.9 s (2 runs) |
-| `small-q5_1` (`ggml-small-q5_1.bin`, 190 MB) | ~420 ms | 14.0-15.0 s (2 runs) |
+| `base` (`ggml-base.bin`, 148 MB) | 332-361 ms | 1297-1346 ms |
+| `small-q5_1` (`ggml-small-q5_1.bin`, 190 MB) | 367-886 ms | 6101-6961 ms |
 
-Rule: default is `small-q5_1` if its 10 s transcribe is <= 1500 ms, else `base`. `small-q5_1` was far over the bar here, so the default is **`base`**. Re-run natively on ARM64 and revisit.
+Six threads made `small-q5_1` slower (12.4 s) and eight was pathological, so the 4-thread cap stays.
+
+**x64 build under emulation** (kept for comparison; pessimistic):
+
+| Model | Load | Transcribe (11.6 s clip) |
+|---|---|---|
+| `base` | ~350-430 ms | 3.7-3.9 s (2 runs) |
+| `small-q5_1` | ~420 ms | 14.0-15.0 s (2 runs) |
+
+Rule: default is `small-q5_1` if its 10 s transcribe is <= 1500 ms, else `base`. `small-q5_1` is far over the bar even natively, so the default stays **`base`**.
 
 Reproduce:
 

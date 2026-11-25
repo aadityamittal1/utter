@@ -132,6 +132,8 @@ export interface PillState {
   mode: string;
   elapsedMs: number;
   message?: string;
+  /** True only for transcription failures that can be retried. Absent means false. */
+  retryable?: boolean;
 }
 
 export interface ApiKeyStatus {

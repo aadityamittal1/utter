@@ -66,6 +66,42 @@ jobs:
           "LIBCLANG_PATH=$bin" | Out-File -FilePath $env:GITHUB_ENV -Append -Encoding utf8
           $bin | Out-File -FilePath $env:GITHUB_PATH -Append -Encoding utf8
 
+      # ARM64 leg only. whisper.cpp's ggml refuses MSVC for ARM ("MSVC is not
+      # supported for ARM, use clang"), so build the C/C++ parts with clang-cl via
+      # Ninja. The runner is x64 cross-compiling to ARM64: the cmake crate passes
+      # --target=aarch64-pc-windows-msvc to clang-cl itself. The windows-latest
+      # images ship Visual Studio Enterprise, which includes the ARM64 MSVC
+      # toolset and libs that clang-cl links against.
+      - name: Check MSVC ARM64 libs
+        if: matrix.target == 'aarch64-pc-windows-msvc'
+        shell: pwsh
+        run: |
+          $vswhere = Join-Path ${env:ProgramFiles(x86)} "Microsoft Visual Studio\Installer\vswhere.exe"
+          $vs = & $vswhere -latest -products * -property installationPath
+          $libs = @(Get-ChildItem -Path (Join-Path $vs "VC\Tools\MSVC\*\lib\arm64") -Directory -ErrorAction SilentlyContinue)
+          if ($libs.Count -eq 0) {
+            Write-Error "MSVC ARM64 libs not found under '$vs\VC\Tools\MSVC\*\lib\arm64'. The runner image lacks the 'MSVC v143 - VS 2022 C++ ARM64/ARM64EC build tools' component (Microsoft.VisualStudio.Component.VC.Tools.ARM64). Install it or change the runner image."
+            exit 1
+          }
+          Write-Host "Found ARM64 libs: $($libs[0].FullName)"
+
+      - name: Set up clang-cl and Ninja for ARM64
+        if: matrix.target == 'aarch64-pc-windows-msvc'
+        shell: pwsh
+        run: |
+          if (-not (Get-Command ninja -ErrorAction SilentlyContinue)) {
+            choco install ninja -y --no-progress
+          }
+          $llvm = Join-Path $env:ProgramFiles "LLVM\bin"
+          @(
+            "CMAKE_GENERATOR=Ninja",
+            "CC=clang-cl",
+            "CXX=clang-cl",
+            # clang-cl needs exceptions enabled explicitly; the cmake crate drops MSVC's default /EHsc.
+            "CXXFLAGS=/EHsc",
+            "LIBCLANG_PATH=$llvm"
+          ) | Out-File -FilePath $env:GITHUB_ENV -Append -Encoding utf8
+
       - name: Install JS dependencies
         working-directory: apps/desktop
         run: npm ci

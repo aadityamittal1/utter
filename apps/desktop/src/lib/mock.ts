@@ -164,7 +164,7 @@ function defaultSettings(onboarded: boolean): Settings {
     launchAtLogin: false,
     theme: "system",
     historyRetention: "forever",
-    keepAudio: false,
+    keepAudio: true,
     categoryRules: [{ category: "aiPrompt", process: "claude.exe" }],
   };
 }
@@ -565,7 +565,7 @@ export function createMockBackend(options: { pillDemo?: boolean; onboarding?: bo
 }
 
 function startPillDemo(emit: <E extends EventName>(e: E, p: EventMap[E]) => void) {
-  const script: { state: PillState["state"]; mode: string; ms: number; message?: string; startMs?: number }[] = [
+  const script: { state: PillState["state"]; mode: string; ms: number; message?: string; startMs?: number; retryable?: boolean }[] = [
     { state: "idle", mode: "dictate", ms: 1800 },
     { state: "listening", mode: "dictate", ms: 4000 },
     { state: "thinking", mode: "dictate", ms: 1400 },
@@ -574,7 +574,9 @@ function startPillDemo(emit: <E extends EventName>(e: E, p: EventMap[E]) => void
     { state: "locked", mode: "handsFree", ms: 3200 },
     { state: "listening", mode: "dictate", ms: 2400, startMs: 1_158_000 },
     { state: "thinking", mode: "command", ms: 1400 },
-    { state: "error", mode: "command", ms: 2400, message: "Add an API key to use commands" },
+    { state: "error", mode: "command", ms: 2400, message: "Add an API key to use commands", retryable: false },
+    { state: "thinking", mode: "dictate", ms: 1400 },
+    { state: "error", mode: "dictate", ms: 2400, message: "Transcription failed", retryable: true },
   ];
   let step = 0;
   let elapsed = 0;
@@ -583,7 +585,7 @@ function startPillDemo(emit: <E extends EventName>(e: E, p: EventMap[E]) => void
     const cur = script[step];
     elapsed = Date.now() - stepStart;
     const shown = elapsed + (cur.startMs ?? 0);
-    emit("pill://state", { state: cur.state, mode: cur.mode, elapsedMs: shown, message: cur.message });
+    emit("pill://state", { state: cur.state, mode: cur.mode, elapsedMs: shown, message: cur.message, retryable: cur.retryable });
     if (cur.state === "listening" || cur.state === "locked") {
       const t = Date.now() / 220;
       emit("pill://levels", Array.from({ length: 12 }, (_, i) => Math.max(0.05, Math.min(1, 0.45 + Math.sin(t + i * 0.7) * 0.3 + Math.sin(t * 2.3 + i) * 0.15))));
