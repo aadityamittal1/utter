@@ -131,9 +131,11 @@ export function PillView({ state, levelsRef, menuOpen = false, reduced = false, 
               <span className="pill-text" title={state.message}>
                 {state.message ?? "Something went wrong"}
               </span>
-              <button className="pill-chip" onClick={act("retry")}>
-                Retry
-              </button>
+              {state.retryable === true && (
+                <button className="pill-chip" onClick={act("retry")}>
+                  Retry
+                </button>
+              )}
             </>
           )}
         </div>

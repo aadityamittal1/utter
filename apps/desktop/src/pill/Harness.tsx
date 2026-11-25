@@ -19,7 +19,7 @@ const CASES: { label: string; state: PillState; menu?: boolean; live?: boolean }
   { label: "thinking", state: { ...base, state: "thinking", elapsedMs: 0 } },
   { label: "done", state: { ...base, state: "done", elapsedMs: 0, message: "Inserted" } },
   { label: "done (words)", state: { ...base, state: "done", elapsedMs: 0, message: "Inserted 24 words" } },
-  { label: "error", state: { ...base, state: "error", elapsedMs: 0, message: "Didn't catch that" } },
+  { label: "error", state: { ...base, state: "error", elapsedMs: 0, message: "Didn't catch that", retryable: true } },
   { label: "error (long)", state: { ...base, state: "error", elapsedMs: 0, message: "Add an API key to use commands" } },
   { label: "menu", state: { ...base, state: "idle", elapsedMs: 0 }, menu: true },
 ];
