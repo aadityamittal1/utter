@@ -1,0 +1,52 @@
+{
+  "core": {
+    "ink": "#14131A",
+    "paper": "#FAF8F5",
+    "ember": "#FF5A36",
+    "emberDark": "#E0401E",
+    "lilac": "#8B7CF6"
+  },
+  "light": {
+    "bg": "#FAF8F5",
+    "surface": "#FFFFFF",
+    "surfaceMuted": "#F3F0EB",
+    "border": "#E4E0D9",
+    "text": "#14131A",
+    "textMuted": "#5E5B66",
+    "textFaint": "#8A8794",
+    "accent": "#E0401E",
+    "accentFill": "#FF5A36",
+    "onAccent": "#14131A",
+    "highlight": "#8B7CF6"
+  },
+  "dark": {
+    "bg": "#14131A",
+    "surface": "#1D1C25",
+    "surfaceMuted": "#262530",
+    "border": "#34323F",
+    "text": "#FAF8F5",
+    "textMuted": "#B4B1BC",
+    "textFaint": "#8A8794",
+    "accent": "#FF5A36",
+    "accentFill": "#FF5A36",
+    "onAccent": "#14131A",
+    "highlight": "#A99EFA"
+  },
+  "neutrals": {
+    "50": "#FAF8F5",
+    "100": "#F3F0EB",
+    "200": "#E4E0D9",
+    "300": "#CFCAC1",
+    "400": "#A9A59D",
+    "500": "#8A8794",
+    "600": "#5E5B66",
+    "700": "#3F3D49",
+    "800": "#262530",
+    "900": "#14131A"
+  },
+  "fonts": {
+    "ui": "Inter",
+    "display": "Instrument Serif",
+    "mono": "JetBrains Mono"
+  }
+}
