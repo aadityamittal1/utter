@@ -46,6 +46,8 @@ pub enum LlmError {
     Refusal,
     #[error("the response was cut off (max tokens)")]
     MaxTokens,
+    #[error("the response was empty")]
+    Empty,
     #[error("the request timed out")]
     Timeout,
     #[error("network error: {0}")]
@@ -119,6 +121,10 @@ fn parse_completion(body: &str, fallback_model: &str) -> Result<Completion, LlmE
         .filter(|b| b.kind == "text")
         .filter_map(|b| b.text.as_deref())
         .collect();
+    if text.trim().is_empty() {
+        // An empty string would otherwise replace the user's selection.
+        return Err(LlmError::Empty);
+    }
     let usage = resp.usage.unwrap_or_default();
     Ok(Completion {
         text,
@@ -161,11 +167,12 @@ impl ClaudeClient {
         let http = reqwest::Client::builder()
             .timeout(TIMEOUT)
             .build()
-            // Building only fails on TLS backend init errors; fall back to defaults.
-            .unwrap_or_else(|_| reqwest::Client::new());
+            // Building only fails on TLS backend init errors, which are unrecoverable;
+            // no default-client fallback, since it would silently drop the 15 s timeout.
+            .expect("reqwest client builds");
         Self {
             http,
-            key: api_key,
+            key: api_key.trim().to_string(),
             model,
             base_url: DEFAULT_BASE_URL.to_string(),
         }
@@ -175,6 +182,14 @@ impl ClaudeClient {
     pub fn with_base_url(mut self, url: String) -> Self {
         self.base_url = url.trim_end_matches('/').to_string();
         self
+    }
+
+    /// The key as a sensitive header value (excluded from debug output).
+    fn key_header(&self) -> Result<reqwest::header::HeaderValue, LlmError> {
+        let mut v =
+            reqwest::header::HeaderValue::from_str(&self.key).map_err(|_| LlmError::Auth)?;
+        v.set_sensitive(true);
+        Ok(v)
     }
 
     fn map_send_err(e: reqwest::Error) -> LlmError {
@@ -193,7 +208,7 @@ impl ClaudeClient {
         let resp = self
             .http
             .post(format!("{}/v1/messages", self.base_url))
-            .header("x-api-key", &self.key)
+            .header("x-api-key", self.key_header()?)
             .header("anthropic-version", ANTHROPIC_VERSION)
             .header("content-type", "application/json")
             .body(request_body(&self.model, req).to_string())
@@ -216,7 +231,7 @@ impl ClaudeClient {
         let resp = self
             .http
             .get(format!("{}/v1/models?limit=1", self.base_url))
-            .header("x-api-key", &self.key)
+            .header("x-api-key", self.key_header()?)
             .header("anthropic-version", ANTHROPIC_VERSION)
             .send()
             .await
@@ -417,6 +432,41 @@ mod tests {
         );
     }
 
+    #[tokio::test]
+    async fn empty_text_on_2xx_is_empty_error() {
+        let mut server = mockito::Server::new_async().await;
+        let _m = server
+            .mock("POST", "/v1/messages")
+            .with_status(200)
+            .with_body(r#"{"stop_reason":"end_turn","content":[{"type":"thinking","thinking":"x"},{"type":"text","text":"  "}],"usage":{"input_tokens":1,"output_tokens":1}}"#)
+            .create_async()
+            .await;
+        let err = client(&server)
+            .complete(&req(Thinking::Disabled))
+            .await
+            .unwrap_err();
+        assert_eq!(err, LlmError::Empty);
+    }
+
+    #[tokio::test]
+    async fn key_is_trimmed() {
+        let mut server = mockito::Server::new_async().await;
+        let m = server
+            .mock("POST", "/v1/messages")
+            .match_header("x-api-key", "sk-ant-secret")
+            .with_status(200)
+            .with_body(r#"{"content":[{"type":"text","text":"ok"}]}"#)
+            .create_async()
+            .await;
+        let c =
+            ClaudeClient::new("  sk-ant-secret\n".into(), "m".into()).with_base_url(server.url());
+        assert_eq!(
+            c.complete(&req(Thinking::Disabled)).await.unwrap().text,
+            "ok"
+        );
+        m.assert_async().await;
+    }
+
     #[test]
     fn error_display_never_contains_key() {
         let errs = [
@@ -426,6 +476,7 @@ mod tests {
             LlmError::Refusal,
             LlmError::MaxTokens,
             LlmError::Timeout,
+            LlmError::Empty,
             LlmError::Network("connection reset".into()),
             LlmError::Api {
                 status: 500,

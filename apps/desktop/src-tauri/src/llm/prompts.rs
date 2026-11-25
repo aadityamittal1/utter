@@ -80,12 +80,8 @@ fn context_block(ctx: &PromptContext) -> String {
             category_label(ctx.category)
         ));
     }
-    if !ctx.user_name.trim().is_empty() {
-        s.push_str(&format!(
-            "- The speaker's name is {}.\n",
-            ctx.user_name.trim()
-        ));
-    }
+    // The user's name is deliberately not part of the shared context: it is only
+    // given for Email enhance (see `enhance_rules`).
     s
 }
 
@@ -231,9 +227,15 @@ pub fn command_request(
     if let Some(sel) = selection {
         user.push_str(&format!("\n\n<selection>\n{sel}\n</selection>"));
     }
+    // Editing a selection keeps its existing style unless the instruction says otherwise.
+    let style = if selection.is_some() {
+        String::new()
+    } else {
+        style_rules(ctx.style).to_string()
+    };
     let system = join_sections(&[
         intro,
-        style_rules(ctx.style).to_string(),
+        style,
         context_block(ctx),
         dictionary_block(&ctx.dictionary),
         OUTPUT_RULES.to_string(),
@@ -297,6 +299,7 @@ mod tests {
         assert!(s.contains("STYLE: Casual"));
         assert!(s.contains("Kubernetes"));
         assert!(s.contains("Aaditya"));
+        assert!(!s.contains("speaker's name"));
         assert!(s.contains("⟦S1⟧"));
         assert!(s.contains("LEVEL: Light"));
     }
@@ -380,12 +383,14 @@ mod tests {
         assert!(with.user.contains("<selection>"));
         assert!(with.user.contains("A very long sentence."));
         assert!(with.system.contains("replacement"));
+        assert!(!with.system.contains("STYLE:"));
         assert_eq!(with.thinking, Thinking::AdaptiveLow);
         assert_eq!(with.max_tokens, 4096);
 
         let without = command_request(&c, "write a reply saying I can do Thursday", None);
         assert!(!without.user.contains("<selection>"));
         assert!(without.system.contains("insert at the cursor"));
+        assert!(without.system.contains("STYLE:"));
     }
 
     #[test]
