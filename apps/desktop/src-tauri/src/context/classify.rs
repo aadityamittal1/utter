@@ -62,19 +62,64 @@ const PROCESS_RULES: &[(&str, Category)] = &[
     ("obsidian.exe", Category::Document),
 ];
 
-/// Built-in rules: title rules first, then process rules.
+const BROWSERS: &[&str] = &[
+    "chrome.exe",
+    "msedge.exe",
+    "firefox.exe",
+    "brave.exe",
+    "opera.exe",
+    "vivaldi.exe",
+    "arc.exe",
+];
+
+const APP_NAMES: &[(&str, &str)] = &[
+    ("winword.exe", "Word"),
+    ("excel.exe", "Excel"),
+    ("powerpnt.exe", "PowerPoint"),
+    ("outlook.exe", "Outlook"),
+    ("olk.exe", "Outlook"),
+    ("ms-teams.exe", "Teams"),
+    ("teams.exe", "Teams"),
+    ("windowsterminal.exe", "Terminal"),
+    ("code.exe", "VS Code"),
+    ("notepad.exe", "Notepad"),
+    ("devenv.exe", "Visual Studio"),
+    ("idea64.exe", "IntelliJ IDEA"),
+    ("wezterm-gui.exe", "WezTerm"),
+    ("conhost.exe", "Console"),
+    ("pwsh.exe", "PowerShell"),
+    ("powershell.exe", "PowerShell"),
+    ("cmd.exe", "Command Prompt"),
+];
+
+fn is_code_process(p: &str) -> bool {
+    PROCESS_RULES
+        .iter()
+        .any(|(n, c)| *c == Category::Code && *n == p)
+}
+
+/// Built-in rules, in order: (1) Code process rules (editors/terminals, so a file or tab
+/// titled "claude.md" inside VS Code stays Code), (2) title rules, (3) other process rules.
 pub fn default_rules() -> Vec<CategoryRule> {
+    let proc_rule = |p: &str, c: Category| CategoryRule {
+        category: c,
+        process: Some(p.to_string()),
+        title_contains: None,
+    };
+    let code = PROCESS_RULES
+        .iter()
+        .filter(|(p, _)| is_code_process(p))
+        .map(|(p, c)| proc_rule(p, *c));
     let titles = TITLE_RULES.iter().map(|(t, _, c)| CategoryRule {
         category: *c,
         process: None,
         title_contains: Some((*t).to_string()),
     });
-    let procs = PROCESS_RULES.iter().map(|(p, c)| CategoryRule {
-        category: *c,
-        process: Some((*p).to_string()),
-        title_contains: None,
-    });
-    titles.chain(procs).collect()
+    let rest = PROCESS_RULES
+        .iter()
+        .filter(|(p, _)| !is_code_process(p))
+        .map(|(p, c)| proc_rule(p, *c));
+    code.chain(titles).chain(rest).collect()
 }
 
 fn rule_matches(rule: &CategoryRule, app: &AppInfo) -> bool {
@@ -102,14 +147,18 @@ pub fn classify(app: &AppInfo, rules: &[CategoryRule]) -> Category {
         .unwrap_or(Category::Other)
 }
 
-/// Friendly app name: a known title (e.g. "Gmail") when one matches, else the exe stem
-/// title-cased (`chrome.exe` -> "Chrome").
+/// Friendly app name: for browsers, a known site from the title (e.g. "Gmail"); for other
+/// apps a known-app map ("VS Code"); else the exe stem title-cased (`chrome.exe` -> "Chrome").
 pub fn display_name(app: &AppInfo) -> String {
-    let title = app.title.to_lowercase();
-    if let Some((_, name, _)) = TITLE_RULES.iter().find(|(t, _, _)| title.contains(t)) {
+    let lower = app.process.to_lowercase();
+    if BROWSERS.contains(&lower.as_str()) {
+        let title = app.title.to_lowercase();
+        if let Some((_, name, _)) = TITLE_RULES.iter().find(|(t, _, _)| title.contains(t)) {
+            return (*name).to_string();
+        }
+    } else if let Some((_, name)) = APP_NAMES.iter().find(|(p, _)| *p == lower) {
         return (*name).to_string();
     }
-    let lower = app.process.to_lowercase();
     let stem = lower.strip_suffix(".exe").unwrap_or(&lower);
     let mut chars = stem.chars();
     match chars.next() {
@@ -238,7 +287,28 @@ mod tests {
             "Gmail"
         );
         assert_eq!(display_name(&app("chrome.exe", "Some page")), "Chrome");
-        assert_eq!(display_name(&app("WINWORD.EXE", "Doc1")), "Winword");
+        assert_eq!(display_name(&app("WINWORD.EXE", "Doc1")), "Word");
+        assert_eq!(
+            display_name(&app("code.exe", "claude.md - Visual Studio Code")),
+            "VS Code"
+        );
+        assert_eq!(
+            display_name(&app("windowsterminal.exe", "claude")),
+            "Terminal"
+        );
+        assert_eq!(display_name(&app("msedge.exe", "Slack | general")), "Slack");
+        assert_eq!(display_name(&app("zed.exe", "x")), "Zed");
+    }
+
+    #[test]
+    fn editors_and_terminals_beat_title_rules() {
+        assert_eq!(
+            c("code.exe", "claude.md - utter - Visual Studio Code"),
+            Category::Code
+        );
+        assert_eq!(c("code.exe", "slack-notifier.ts - utter"), Category::Code);
+        assert_eq!(c("windowsterminal.exe", "claude"), Category::Code);
+        assert_eq!(c("chrome.exe", "Slack"), Category::WorkChat);
         assert_eq!(display_name(&app("", "")), "Unknown");
     }
 }
