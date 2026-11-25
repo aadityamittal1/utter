@@ -127,6 +127,7 @@ fn on_menu(app: &AppHandle, id: &str) {
     match id {
         "open" => crate::windows::show_hub(app, None),
         "settings" => crate::windows::show_hub(app, Some("settings")),
+        "dictate" if st.is_paused() => st.pill_error("dictate", "Utter is paused", 2500),
         "dictate" => {
             let _ = st
                 .session_tx

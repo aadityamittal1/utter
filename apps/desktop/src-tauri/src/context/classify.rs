@@ -8,6 +8,8 @@ pub struct AppInfo {
     pub process: String,
     pub title: String,
     pub hwnd: isize,
+    /// Owning process id (0 when unknown).
+    pub pid: u32,
 }
 
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
@@ -178,6 +180,7 @@ mod tests {
             process: process.into(),
             title: title.into(),
             hwnd: 0,
+            pid: 0,
         }
     }
     fn c(process: &str, title: &str) -> Category {

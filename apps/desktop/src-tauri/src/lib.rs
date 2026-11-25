@@ -78,6 +78,18 @@ fn setup(app: &mut tauri::App) -> Result<(), Box<dyn std::error::Error>> {
             purger.purge_history();
         })?;
 
+    // Track the last external foreground window so tray actions (Paste last) can hand focus
+    // back to it: opening the tray menu makes one of our own windows the foreground.
+    let watcher = st.clone();
+    std::thread::Builder::new()
+        .name("utter-foreground".into())
+        .spawn(move || loop {
+            if let Some(a) = context::foreground_windows::foreground_app() {
+                watcher.note_foreground(&a);
+            }
+            std::thread::sleep(Duration::from_millis(400));
+        })?;
+
     commands::preload_engine(&st);
 
     // Launch at login (not for dev builds, which would register a debug exe).
@@ -111,7 +123,6 @@ pub fn run() {
             Some(vec!["--minimized"]),
         ))
         .plugin(tauri_plugin_opener::init())
-        .plugin(tauri_plugin_dialog::init())
         .invoke_handler(tauri::generate_handler![
             commands::get_settings,
             commands::update_settings,

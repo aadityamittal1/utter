@@ -50,6 +50,7 @@ pub fn foreground_app() -> Option<AppInfo> {
             process,
             title,
             hwnd: hwnd.0 as isize,
+            pid,
         })
     }
 }

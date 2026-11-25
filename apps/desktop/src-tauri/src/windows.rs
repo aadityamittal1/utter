@@ -106,6 +106,13 @@ pub fn sync_pill(app: &AppHandle, st: &PillState, allowed: bool) {
     let _ = w.set_ignore_cursor_events(st.state == PillKind::Idle);
 }
 
+/// The hub window's native handle, if it exists.
+pub fn hub_hwnd(app: &AppHandle) -> Option<isize> {
+    app.get_webview_window(HUB_LABEL)
+        .and_then(|w| w.hwnd().ok())
+        .map(|h| h.0 as isize)
+}
+
 /// Show and focus the hub, optionally navigating it to `page`.
 pub fn show_hub(app: &AppHandle, page: Option<&str>) {
     if let Some(w) = app.get_webview_window(HUB_LABEL) {

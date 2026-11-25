@@ -10,7 +10,8 @@ use crate::app_state::{AppState, LastResult, PillKind};
 use crate::audio::capture::Recorder;
 use crate::audio::wav;
 use crate::context::classify::{classify, display_name, AppInfo};
-use crate::context::foreground_windows::foreground_app;
+use crate::context::foreground_windows::{focus_window, foreground_app};
+use crate::context::target::{paste_last_plan, press_target, PasteLastPlan};
 use crate::hotkeys::action::Action;
 use crate::hotkeys::matcher::HotkeyEvent;
 use crate::insert::{capture_selection, copy_text, insert_text, paste_method_for};
@@ -40,6 +41,9 @@ struct Active {
     recorder: Arc<Recorder>,
     mode: Mode,
     app: Option<AppInfo>,
+    /// Window to re-focus before pasting; `None` pastes into whatever is focused at finish
+    /// (our own tray/pill windows are never a target).
+    target: Option<isize>,
     category: Category,
     app_name: String,
     started: Instant,
@@ -259,6 +263,14 @@ impl Worker {
         }
         *st.last_failed.lock() = None;
         let app = foreground_app();
+        if let Some(a) = &app {
+            st.note_foreground(a);
+        }
+        let target = press_target(
+            app.as_ref(),
+            std::process::id(),
+            crate::windows::hub_hwnd(&st.app),
+        );
         let (category, app_name) = match &app {
             Some(a) if settings.context_awareness => {
                 (classify(a, &settings.category_rules), display_name(a))
@@ -285,6 +297,7 @@ impl Worker {
             recorder,
             mode,
             app,
+            target,
             category,
             app_name,
             started: Instant::now(),
@@ -346,7 +359,7 @@ impl Worker {
 
         // Command mode: grab the selection now that the chord keys are released.
         let same_window = match (&a.app, foreground_app()) {
-            (Some(at_press), Some(now)) => at_press.hwnd == now.hwnd,
+            (Some(at_press), Some(now)) => a.target.is_some() && at_press.hwnd == now.hwnd,
             _ => false,
         };
         let selection = if a.mode == Mode::Command && same_window {
@@ -409,7 +422,15 @@ impl Worker {
             TextOutcome::NeedKey => self.fail(mode_s, "Add an API key to use commands", 3500),
             TextOutcome::CommandFailed => self.fail(mode_s, "Couldn't run that command", 3500),
             TextOutcome::Text(r) => {
-                let target = a.app.as_ref().map(|x| x.hwnd).filter(|h| *h != 0);
+                let target = a.target;
+                // No recorded target (our own window was focused at press): paste where the
+                // user is now, with the paste method for that window.
+                let method = if target.is_none() {
+                    let proc = foreground_app().map(|x| x.process).unwrap_or_default();
+                    paste_method_for(&proc)
+                } else {
+                    method
+                };
                 let pasted = insert_text(&r.text, method, target);
                 if let Err(e) = &pasted {
                     log::warn!("insert failed: {e}");
@@ -469,7 +490,10 @@ impl Worker {
                 st.emit("history://changed", ());
                 true
             }
-            Err(_) => false,
+            Err(_) => {
+                st.delete_audio_files(row.audio_path.clone());
+                false
+            }
         }
     }
 
@@ -517,6 +541,8 @@ impl Worker {
         };
         if let Err(e) = st.db.insert_history(&row) {
             log::warn!("history not saved: {e}");
+            // Don't leave an orphaned recording behind.
+            st.delete_audio_files(row.audio_path.clone());
         }
         st.emit("history://changed", ());
     }
@@ -540,11 +566,48 @@ impl Worker {
             self.fail("dictate", "Nothing to paste yet", 2000);
             return;
         };
-        let proc = foreground_app().map(|a| a.process).unwrap_or_default();
+        let st = &self.st;
+        let fg = foreground_app();
+        if let Some(a) = &fg {
+            st.note_foreground(a);
+        }
+        let plan = paste_last_plan(
+            fg.as_ref(),
+            std::process::id(),
+            crate::windows::hub_hwnd(&st.app),
+            *st.last_external.lock(),
+        );
+        let proc = match plan {
+            PasteLastPlan::Foreground => fg.map(|a| a.process).unwrap_or_default(),
+            PasteLastPlan::Refocus(h) => {
+                // Our tray/hub has focus: hand it back to the window the user was in.
+                if !focus_window(h) {
+                    self.copy_only(&text);
+                    return;
+                }
+                std::thread::sleep(Duration::from_millis(80));
+                foreground_app().map(|a| a.process).unwrap_or_default()
+            }
+            PasteLastPlan::ClipboardOnly => {
+                self.copy_only(&text);
+                return;
+            }
+        };
         if let Err(e) = insert_text(&text, paste_method_for(&proc), None) {
             log::warn!("paste last failed: {e}");
             self.fail("dictate", "Couldn't paste", 3000);
         }
+    }
+
+    /// No window to paste into: leave the text on the clipboard and say so.
+    fn copy_only(&self, text: &str) {
+        copy_text(text);
+        self.st.set_pill_timed(
+            PillKind::Done,
+            "dictate",
+            Some("Copied \u{2014} press Ctrl+V".into()),
+            2500,
+        );
     }
 
     fn copy_last(&self) {
@@ -586,7 +649,11 @@ impl Worker {
             self.fail("transform", "Couldn't run that transform", 3500);
             return;
         };
-        let target = app.as_ref().map(|a| a.hwnd).filter(|h| *h != 0);
+        let target = press_target(
+            app.as_ref(),
+            std::process::id(),
+            crate::windows::hub_hwnd(&st.app),
+        );
         let pasted = insert_text(&out, method, target);
         *st.last.lock() = Some(LastResult { text: out.clone() });
         *st.last_failed.lock() = None;
