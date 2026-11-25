@@ -71,6 +71,9 @@ pub enum Retention {
     Never,
 }
 
+/// Saved recordings are kept for 14 days at most.
+pub const AUDIO_RETENTION_MS: i64 = 14 * 24 * 3600 * 1000;
+
 const COLS: &str = "id, created_at, app_name, category, mode, raw_text, final_text, \
                     duration_ms, words, used_ai, audio_path, error";
 
@@ -210,6 +213,33 @@ impl Db {
         }
     }
 
+    /// Audio older than 14 days is dropped even when the text is kept: the rows' `audio_path`
+    /// is cleared in the same transaction that selects it. Returns the paths to delete.
+    pub fn expire_old_audio(&self, now_ms: i64) -> Vec<String> {
+        let cutoff = now_ms - AUDIO_RETENTION_MS;
+        let run = || -> rusqlite::Result<Vec<String>> {
+            let mut conn = self.conn();
+            let tx = conn.transaction()?;
+            let paths = {
+                let mut st = tx.prepare(
+                    "SELECT audio_path FROM history WHERE created_at < ?1 AND audio_path IS NOT NULL",
+                )?;
+                let rows = st.query_map([cutoff], |r| r.get::<_, String>(0))?;
+                rows.collect::<rusqlite::Result<Vec<_>>>()?
+            };
+            tx.execute(
+                "UPDATE history SET audio_path = NULL WHERE created_at < ?1 AND audio_path IS NOT NULL",
+                [cutoff],
+            )?;
+            tx.commit()?;
+            Ok(paths)
+        };
+        run().unwrap_or_else(|e| {
+            log::error!("audio expiry failed: {e}");
+            Vec::new()
+        })
+    }
+
     /// SELECT the audio paths then DELETE the same rows in one transaction (errors are logged).
     fn delete_audio_rows(&self, where_sql: &str, args: &[&dyn rusqlite::ToSql]) -> Vec<String> {
         let run = || -> rusqlite::Result<Vec<String>> {
@@ -319,6 +349,26 @@ mod tests {
             0,
             "wildcards escaped"
         );
+    }
+
+    #[test]
+    fn audio_expires_after_14_days_but_text_stays() {
+        let db = Db::open_in_memory().unwrap();
+        let now = 100 * AUDIO_RETENTION_MS;
+        let mk = |created: i64, p: &str| {
+            let mut h = sample(created, "r", "Text.");
+            h.audio_path = Some(p.to_string());
+            db.insert_history(&h).unwrap()
+        };
+        let old = mk(now - AUDIO_RETENTION_MS - 1, "old.wav");
+        let edge = mk(now - AUDIO_RETENTION_MS, "edge.wav");
+        let fresh = mk(now - AUDIO_RETENTION_MS + 1, "fresh.wav");
+        assert_eq!(db.expire_old_audio(now), vec!["old.wav".to_string()]);
+        assert!(!db.get_history(old).unwrap().has_audio);
+        assert_eq!(db.get_history(old).unwrap().final_text, "Text.");
+        assert!(db.get_history(edge).unwrap().has_audio);
+        assert!(db.get_history(fresh).unwrap().has_audio);
+        assert!(db.expire_old_audio(now).is_empty(), "already cleared");
     }
 
     #[test]

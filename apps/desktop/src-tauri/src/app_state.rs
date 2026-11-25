@@ -98,6 +98,8 @@ pub struct AppState {
     pub last: Mutex<Option<LastResult>>,
     /// History id of the last transcription that failed (pill "retry").
     pub last_failed: Mutex<Option<i64>>,
+    /// The most recent foreground window that is not ours (target for tray Paste last).
+    pub last_external: Mutex<Option<isize>>,
     pub mic_testing: Mutex<bool>,
     /// True from a successful recording start until its audio is collected.
     session_active: AtomicBool,
@@ -131,6 +133,7 @@ impl AppState {
             downloads: Mutex::new(HashMap::new()),
             last: Mutex::new(None),
             last_failed: Mutex::new(None),
+            last_external: Mutex::new(None),
             mic_testing: Mutex::new(false),
             session_active: AtomicBool::new(false),
             settings_lock: Mutex::new(()),
@@ -167,6 +170,13 @@ impl AppState {
         let bindings = build_bindings(&self.settings_snapshot(), &self.db.transforms_list());
         if let Ok(mut m) = self.matcher.lock() {
             m.set_bindings(bindings);
+        }
+    }
+
+    /// Remember pp as the last external window when it is one.
+    pub fn note_foreground(&self, app: &crate::context::classify::AppInfo) {
+        if crate::context::target::is_external(app, std::process::id()) {
+            *self.last_external.lock() = Some(app.hwnd);
         }
     }
 
@@ -397,9 +407,10 @@ impl AppState {
 
     pub fn purge_history(&self) {
         let retention = self.settings.read().history_retention;
-        let paths = self
-            .db
-            .purge_history(retention, chrono::Utc::now().timestamp_millis());
+        let now = chrono::Utc::now().timestamp_millis();
+        // 14-day audio retention applies regardless of keepAudio (and to failure-saved audio).
+        let mut paths = self.db.expire_old_audio(now);
+        paths.extend(self.db.purge_history(retention, now));
         if !paths.is_empty() {
             self.delete_audio_files(paths);
             self.emit("history://changed", ());
