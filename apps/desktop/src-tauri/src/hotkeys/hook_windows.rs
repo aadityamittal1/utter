@@ -316,7 +316,7 @@ fn process(vk: u16, flags: u32, time: u32, down: bool) -> bool {
         return false;
     }
     let key = key_from_vk(vk);
-    let mut mask = false;
+    let mask;
     let swallow;
     {
         let mut guard = lock_ctx();
