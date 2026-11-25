@@ -186,6 +186,7 @@ pub fn save(path: &Path, settings: &Settings) -> Result<()> {
 }
 
 #[cfg(test)]
+#[allow(clippy::field_reassign_with_default)] // readability in tests
 mod tests {
     use super::*;
 

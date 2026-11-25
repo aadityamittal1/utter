@@ -2,7 +2,7 @@
 //! No clocks inside; callers pass `t_ms` (any monotonic millisecond counter).
 
 use super::action::Action;
-use super::chord::{Chord, Key, VK_ESCAPE};
+use super::chord::{Chord, Key};
 use std::collections::BTreeSet;
 
 /// Window after an activation in which a growing/changing held set re-targets or cancels it.
@@ -311,6 +311,7 @@ impl Matcher {
 #[cfg(test)]
 mod tests {
     use super::*;
+    use crate::hotkeys::chord::VK_ESCAPE;
     use HotkeyEvent::*;
 
     const CTRL: Key = Key::Ctrl;

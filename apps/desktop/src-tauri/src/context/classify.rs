@@ -14,7 +14,9 @@ pub struct AppInfo {
 #[serde(rename_all = "camelCase")]
 pub struct CategoryRule {
     pub category: Category,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
     pub process: Option<String>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
     pub title_contains: Option<String>,
 }
 

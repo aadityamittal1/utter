@@ -139,6 +139,7 @@ pub fn set_clipboard_text_private(text: &str) -> anyhow::Result<u32> {
 pub fn get_clipboard_text() -> Option<String> {
     let _g = ClipboardGuard::open().ok()?;
     let bytes = read_format(CF_UNICODETEXT, 0)?;
+    #[allow(clippy::chunks_exact_to_as_chunks)] // lint suggestion needs a newer MSRV than we target
     let wide: Vec<u16> = bytes
         .chunks_exact(2)
         .map(|c| u16::from_le_bytes([c[0], c[1]]))

@@ -63,8 +63,8 @@ pub fn local_cleanup(raw: &str) -> String {
         .into_owned();
     // A leading spoken-punctuation word must not leave orphan punctuation.
     let t = t
-        .trim_start_matches(|c: char| matches!(c, ' ' | '\n' | ',' | '.' | ';' | ':' | '!' | '?'))
-        .trim_end_matches(|c: char| c == ' ' || c == '\n')
+        .trim_start_matches([' ', '\n', ',', '.', ';', ':', '!', '?'])
+        .trim_end_matches([' ', '\n'])
         .to_string();
     if t.is_empty() {
         return String::new();

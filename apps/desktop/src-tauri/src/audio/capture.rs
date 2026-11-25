@@ -321,8 +321,8 @@ fn build_stream(
 ) -> Result<(cpal::Stream, u32)> {
     let dev = find_device(device).ok_or_else(|| anyhow!("no input device available"))?;
     let supported = dev.default_input_config().context("default input config")?;
-    let rate: u32 = supported.sample_rate() as u32;
-    let channels: u16 = supported.channels() as u16;
+    let rate: u32 = supported.sample_rate();
+    let channels: u16 = supported.channels();
     let format = supported.sample_format();
     let cfg: cpal::StreamConfig = supported.into();
     let stream = match format {
