@@ -5,13 +5,22 @@ use std::time::Duration;
 use ::windows::Win32::Foundation::{GlobalFree, HANDLE, HGLOBAL};
 use ::windows::Win32::System::DataExchange::{
     CloseClipboard, EmptyClipboard, EnumClipboardFormats, GetClipboardData,
-    GetClipboardSequenceNumber, OpenClipboard, SetClipboardData,
+    GetClipboardSequenceNumber, OpenClipboard, RegisterClipboardFormatW, SetClipboardData,
 };
 use ::windows::Win32::System::Memory::{
     GlobalAlloc, GlobalLock, GlobalSize, GlobalUnlock, GMEM_MOVEABLE,
 };
 
 pub const CF_UNICODETEXT: u32 = 13;
+
+/// Total bytes a snapshot may hold; larger formats are skipped (and so not restored).
+pub const SNAPSHOT_CAP_BYTES: usize = 32 * 1024 * 1024;
+
+/// Whether a format of `len` bytes still fits under the cap given `used` bytes so far.
+pub fn fits_budget(used: usize, len: usize) -> bool {
+    used.checked_add(len)
+        .is_some_and(|t| t <= SNAPSHOT_CAP_BYTES)
+}
 
 /// Formats that are handles to GDI objects (not HGLOBAL byte blobs) or are synthesized by
 /// Windows from other formats; these are skipped when snapshotting.
@@ -87,24 +96,49 @@ fn put_bytes(fmt: u32, bytes: &[u8]) -> anyhow::Result<()> {
     Ok(())
 }
 
-/// Replace the clipboard contents with `text`; returns the clipboard sequence number after the set.
-pub fn set_clipboard_text(text: &str) -> anyhow::Result<u32> {
+fn put_dword_format(name: ::windows::core::PCWSTR, value: u32) {
+    // SAFETY: `name` is a valid NUL-terminated wide string literal.
+    let fmt = unsafe { RegisterClipboardFormatW(name) };
+    if fmt != 0 {
+        let _ = put_bytes(fmt, &value.to_le_bytes());
+    }
+}
+
+fn set_text_inner(text: &str, private: bool) -> anyhow::Result<u32> {
     let mut wide: Vec<u16> = text.encode_utf16().collect();
     wide.push(0);
     let bytes: Vec<u8> = wide.iter().flat_map(|w| w.to_le_bytes()).collect();
-    {
-        let _g = ClipboardGuard::open()?;
-        // SAFETY: clipboard is open.
-        unsafe { EmptyClipboard()? };
-        put_bytes(CF_UNICODETEXT, &bytes)?;
+    let _g = ClipboardGuard::open()?;
+    // SAFETY: clipboard is open.
+    unsafe { EmptyClipboard()? };
+    put_bytes(CF_UNICODETEXT, &bytes)?;
+    if private {
+        // Keep dictated text out of clipboard history / cloud clipboard / clipboard monitors.
+        put_dword_format(
+            ::windows::core::w!("ExcludeClipboardContentFromMonitorProcessing"),
+            1,
+        );
+        put_dword_format(::windows::core::w!("CanIncludeInClipboardHistory"), 0);
+        put_dword_format(::windows::core::w!("CanUploadToCloudClipboard"), 0);
     }
+    // Read while still open so nothing can slip in between our set and the sequence read.
     Ok(clipboard_seq())
 }
 
+/// Replace the clipboard contents with `text`; returns the clipboard sequence number after the set.
+pub fn set_clipboard_text(text: &str) -> anyhow::Result<u32> {
+    set_text_inner(text, false)
+}
+
+/// Like `set_clipboard_text`, but flagged so clipboard history / cloud sync ignore it
+/// (used for dictated text that is only on the clipboard to be pasted).
+pub fn set_clipboard_text_private(text: &str) -> anyhow::Result<u32> {
+    set_text_inner(text, true)
+}
 /// Read the clipboard's current text, if any.
 pub fn get_clipboard_text() -> Option<String> {
     let _g = ClipboardGuard::open().ok()?;
-    let bytes = read_format(CF_UNICODETEXT)?;
+    let bytes = read_format(CF_UNICODETEXT, 0)?;
     let wide: Vec<u16> = bytes
         .chunks_exact(2)
         .map(|c| u16::from_le_bytes([c[0], c[1]]))
@@ -114,7 +148,7 @@ pub fn get_clipboard_text() -> Option<String> {
 }
 
 /// Read one format as bytes. Caller must hold the clipboard open.
-fn read_format(fmt: u32) -> Option<Vec<u8>> {
+fn read_format(fmt: u32, used: usize) -> Option<Vec<u8>> {
     // SAFETY: clipboard is open; the handle is an HGLOBAL for byte formats, locked while read.
     unsafe {
         let h = GetClipboardData(fmt).ok()?;
@@ -123,7 +157,7 @@ fn read_format(fmt: u32) -> Option<Vec<u8>> {
         }
         let hg = HGLOBAL(h.0);
         let size = GlobalSize(hg);
-        if size == 0 {
+        if size == 0 || !fits_budget(used, size) {
             return None;
         }
         let ptr = GlobalLock(hg) as *const u8;
@@ -143,11 +177,13 @@ pub struct ClipboardSnapshot {
 }
 
 impl ClipboardSnapshot {
-    pub fn take() -> Self {
+    /// None if the clipboard could not be opened (never restore from a failed snapshot).
+    pub fn take() -> Option<Self> {
         let Ok(_g) = ClipboardGuard::open() else {
-            return Self::default();
+            return None;
         };
         let mut formats = Vec::new();
+        let mut used = 0usize;
         let mut fmt = 0u32;
         loop {
             // SAFETY: clipboard is open.
@@ -158,11 +194,12 @@ impl ClipboardSnapshot {
             if skip_format(fmt) {
                 continue;
             }
-            if let Some(bytes) = read_format(fmt) {
+            if let Some(bytes) = read_format(fmt, used) {
+                used += bytes.len();
                 formats.push((fmt, bytes));
             }
         }
-        Self { formats }
+        Some(Self { formats })
     }
 
     pub fn is_empty(&self) -> bool {
@@ -175,14 +212,18 @@ impl ClipboardSnapshot {
 
     pub fn restore(&self) {
         let Ok(_g) = ClipboardGuard::open() else {
+            log::warn!("clipboard restore: could not open clipboard");
             return;
         };
         // SAFETY: clipboard is open.
         if unsafe { EmptyClipboard() }.is_err() {
+            log::warn!("clipboard restore: EmptyClipboard failed");
             return;
         }
         for (fmt, bytes) in &self.formats {
-            let _ = put_bytes(*fmt, bytes);
+            if let Err(e) = put_bytes(*fmt, bytes) {
+                log::warn!("clipboard restore: format {fmt} failed: {e}");
+            }
         }
     }
 }
@@ -233,5 +274,13 @@ mod tests {
         assert!(!skip_format(CF_UNICODETEXT));
         assert!(!skip_format(8));
         assert!(!skip_format(15));
+    }
+
+    #[test]
+    fn snapshot_budget() {
+        assert!(fits_budget(0, SNAPSHOT_CAP_BYTES));
+        assert!(!fits_budget(1, SNAPSHOT_CAP_BYTES));
+        assert!(!fits_budget(SNAPSHOT_CAP_BYTES, 1));
+        assert!(!fits_budget(usize::MAX, 1));
     }
 }
