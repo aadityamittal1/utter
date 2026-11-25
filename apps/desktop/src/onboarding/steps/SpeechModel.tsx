@@ -1,5 +1,5 @@
 import { useEffect, useState } from "react";
-import { CheckCircle2, Download } from "lucide-react";
+import { CheckCircle2, Download, Loader2 } from "lucide-react";
 import { Button } from "../../components/ui";
 import { ipc } from "../../lib/ipc";
 import { cn } from "../../lib/cn";
@@ -24,21 +24,32 @@ export function SpeechModel({ next, back, download }: StepProps) {
   }, [download.progress?.done]);
 
   const current = models?.find((m) => m.id === selected);
-  const p = download.modelId === selected ? download.progress : null;
+  const started = download.modelId === selected;
+  const p = started ? download.progress : null;
   const pct = p ? Math.round((p.downloaded / Math.max(1, p.total)) * 100) : 0;
   const ready = !!current && (current.downloaded || p?.done);
+  const starting = started && !p && !download.error && !ready;
   const downloading = !!p && !p.done && !download.error;
-  const started = download.modelId === selected;
+  const busyDownload = starting || downloading;
 
   return (
     <StepFrame
       eyebrow="Step 4"
       title="Choose a speech model"
       subtitle="This is what turns your voice into text, entirely on your PC. We picked the best fit; the download keeps going while you finish setup."
+      onSubmit={() => {
+        // Make sure something is on its way before moving on.
+        if (current && !started && (!current.downloaded || !current.active)) void download.start(current.id);
+        next();
+      }}
     >
-      {error && <p role="alert" className="mb-3 text-sm text-danger">{error}</p>}
+      {error && (
+        <p role="alert" className="mb-3 text-sm text-danger">
+          {error}
+        </p>
+      )}
       <div role="radiogroup" aria-label="Speech model" className="flex flex-col gap-2">
-        {(models ?? []).slice(0, 4).map((m) => {
+        {(models ?? []).map((m) => {
           const on = m.id === selected;
           return (
             <button
@@ -47,9 +58,9 @@ export function SpeechModel({ next, back, download }: StepProps) {
               role="radio"
               aria-checked={on}
               onClick={() => setSelected(m.id)}
-              disabled={downloading && download.modelId !== m.id}
+              disabled={busyDownload && download.modelId !== m.id}
               className={cn(
-                "flex items-center gap-3 rounded-card border px-4 py-3 text-left transition-colors disabled:opacity-50",
+                "flex items-center gap-3 rounded-card border px-4 py-2.5 text-left transition-colors disabled:opacity-50",
                 on ? "border-ember bg-accent-soft" : "border-line bg-surface hover:border-line-strong",
               )}
             >
@@ -71,6 +82,11 @@ export function SpeechModel({ next, back, download }: StepProps) {
       </div>
 
       <div className="mt-5 min-h-12">
+        {starting && (
+          <p className="flex items-center gap-2 text-sm text-muted" role="status">
+            <Loader2 size={14} className="animate-spin" aria-hidden /> Starting…
+          </p>
+        )}
         {downloading && (
           <div aria-live="polite">
             <div className="h-1.5 overflow-hidden rounded-full bg-muted-surface" role="progressbar" aria-valuenow={pct} aria-valuemin={0} aria-valuemax={100} aria-label="Model download">
@@ -89,7 +105,7 @@ export function SpeechModel({ next, back, download }: StepProps) {
             </button>
           </p>
         )}
-        {ready && !downloading && (
+        {ready && !busyDownload && (
           <p className="flex items-center gap-2 text-sm text-success" role="status">
             <CheckCircle2 size={15} aria-hidden /> Ready on this PC.
           </p>
@@ -101,15 +117,7 @@ export function SpeechModel({ next, back, download }: StepProps) {
         )}
       </div>
 
-      <StepFooter
-        onBack={back}
-        onNext={() => {
-          // Make sure something is on its way before moving on.
-          if (current && !ready && !started) void download.start(current.id);
-          else if (current?.downloaded && !current.active && !started) void download.start(current.id);
-          next();
-        }}
-      />
+      <StepFooter onBack={back} />
     </StepFrame>
   );
 }

@@ -52,6 +52,7 @@ export function Personalize({ next, back }: StepProps) {
   const [busy, setBusy] = useState(false);
   const [written, setWritten] = useState<StyleKind | undefined>(settings?.styles.email);
   const [chat, setChat] = useState<StyleKind | undefined>(settings?.styles.workChat);
+  const [initial] = useState(() => ({ written: settings?.styles.email, chat: settings?.styles.workChat }));
 
   const set = (k: keyof PersonalInputs) => (e: React.ChangeEvent<HTMLInputElement>) => {
     setVals((v) => ({ ...v, [k]: e.target.value }));
@@ -65,28 +66,49 @@ export function Personalize({ next, back }: StepProps) {
       return;
     }
     setBusy(true);
-    const patch: Partial<NonNullable<typeof settings>> = { userName: name.trim() };
-    if (settings && (written || chat)) {
-      patch.styles = {
-        ...settings.styles,
-        ...(written ? { email: written, document: written } : {}),
-        ...(chat ? { workChat: chat, personalChat: chat } : {}),
-      };
-    }
-    await update(patch);
-
     const existing: string[] = [];
+    const updated: string[] = [];
     const failed: string[] = [];
-    for (const s of buildSnippets(vals)) {
-      try {
-        await ipc.snippetsAdd(s.trigger, s.expansion);
-      } catch (e) {
-        // Most likely "already exists" from an earlier run: never block onboarding on it.
-        if (/exist/i.test(String(e))) existing.push(`“${s.trigger}”`);
-        else failed.push(`“${s.trigger}”: ${String(e)}`);
+    try {
+      const patch: Partial<NonNullable<typeof settings>> = { userName: name.trim() };
+      // Only write style picks the user actually changed.
+      const writtenChanged = !!written && written !== initial.written;
+      const chatChanged = !!chat && chat !== initial.chat;
+      if (settings && (writtenChanged || chatChanged)) {
+        patch.styles = {
+          ...settings.styles,
+          ...(writtenChanged ? { email: written, document: written } : {}),
+          ...(chatChanged ? { workChat: chat, personalChat: chat } : {}),
+        } as typeof settings.styles;
       }
+      await update(patch);
+
+      for (const s of buildSnippets(vals)) {
+        try {
+          await ipc.snippetsAdd(s.trigger, s.expansion);
+        } catch (e) {
+          if (!/exist/i.test(String(e))) {
+            failed.push(`“${s.trigger}”: ${String(e)}`);
+            continue;
+          }
+          // Already there (earlier run): refresh it if the user typed something different.
+          try {
+            const found = (await ipc.snippetsList()).find((x) => x.trigger.toLowerCase() === s.trigger);
+            if (found && found.expansion !== s.expansion) {
+              await ipc.snippetsUpdate({ ...found, expansion: s.expansion });
+              updated.push(`“${s.trigger}”`);
+            } else existing.push(`“${s.trigger}”`);
+          } catch (e2) {
+            failed.push(`“${s.trigger}”: ${String(e2)}`);
+          }
+        }
+      }
+    } catch (e) {
+      failed.push(String(e));
+    } finally {
+      setBusy(false);
     }
-    setBusy(false);
+    if (updated.length) toast.success(`Updated ${updated.join(" and ")}.`);
     if (existing.length) toast.info(`You already have ${existing.join(" and ")}. Left as is.`);
     if (failed.length) toast.error(`Couldn't add ${failed.join("; ")}`);
     next();
@@ -94,6 +116,7 @@ export function Personalize({ next, back }: StepProps) {
 
   return (
     <StepFrame
+      onSubmit={() => void save()}
       eyebrow="Step 7"
       title="Make it yours"
       subtitle="Say “my linkedin”, “my email” or “my website” in any dictation and Utter types the real thing. All optional."
@@ -110,7 +133,7 @@ export function Personalize({ next, back }: StepProps) {
           <Choice label="Chat messages" options={CHAT} value={chat} onChange={setChat} />
         </div>
       </div>
-      <StepFooter onBack={back} onNext={() => void save()} loading={busy} />
+      <StepFooter onBack={back} loading={busy} />
     </StepFrame>
   );
 }

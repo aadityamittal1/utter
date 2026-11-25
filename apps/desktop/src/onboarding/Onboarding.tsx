@@ -6,7 +6,7 @@ import { formatBytes } from "../lib/format";
 import { toast } from "../lib/store";
 import { useBackendEvent } from "../lib/useBackendEvent";
 import type { ModelProgress } from "../lib/types";
-import { loadStep, saveStep, STEP_COUNT } from "./helpers";
+import { loadModelId, loadStep, modelAction, saveModelId, saveStep, STEP_COUNT } from "./helpers";
 import type { DownloadState, StepProps } from "./parts";
 import { Welcome } from "./steps/Welcome";
 import { ConnectClaude } from "./steps/ConnectClaude";
@@ -30,12 +30,22 @@ const STEPS: Array<{ label: string; Component: (p: StepProps) => React.ReactNode
 
 export default function Onboarding() {
   const [step, setStep] = useState(loadStep);
-  const [modelId, setModelId] = useState<string | null>(null);
+  const [modelId, setModelId] = useState<string | null>(loadModelId);
   const [progress, setProgress] = useState<ModelProgress | null>(null);
   const [dlError, setDlError] = useState<string | null>(null);
-  const modelRef = useRef<string | null>(null);
+  const modelRef = useRef<string | null>(modelId);
+  const mainRef = useRef<HTMLElement>(null);
 
   useEffect(() => saveStep(step), [step]);
+
+  // Move focus to the step heading so keyboard and screen-reader users land at the top.
+  useEffect(() => {
+    const h = mainRef.current?.querySelector("h1");
+    if (h) {
+      h.tabIndex = -1;
+      h.focus({ preventScroll: true });
+    }
+  }, [step]);
 
   const go = useCallback((n: number) => setStep(Math.max(0, Math.min(STEP_COUNT - 1, n))), []);
 
@@ -46,6 +56,18 @@ export default function Onboarding() {
       setDlError(String(e));
     }
   }, []);
+
+  // Resume: reconcile with what the backend actually has (e.g. the download finished while we were away).
+  useEffect(() => {
+    if (!modelRef.current) return;
+    ipc
+      .listModels()
+      .then((models) => {
+        const a = modelAction(models, modelRef.current);
+        if (a.kind === "activate" && a.id) return finishDownload(a.id);
+      })
+      .catch(() => undefined);
+  }, [finishDownload]);
 
   useBackendEvent("model://progress", (p) => {
     if (p.id !== modelRef.current) return;
@@ -60,6 +82,7 @@ export default function Onboarding() {
     error: dlError,
     start: async (id) => {
       modelRef.current = id;
+      saveModelId(id);
       setModelId(id);
       setProgress(null);
       setDlError(null);
@@ -91,26 +114,21 @@ export default function Onboarding() {
               Downloading model · {Math.round((progress.downloaded / Math.max(1, progress.total)) * 100)}% of {formatBytes(progress.total)}
             </span>
           )}
-          <ol className="flex items-center gap-2" aria-label={`Step ${step + 1} of ${STEPS.length}: ${STEPS[step].label}`}>
+          <span className="sr-only" role="status">{`Step ${step + 1} of ${STEPS.length}: ${STEPS[step].label}`}</span>
+          <div className="flex items-center gap-2" aria-hidden="true">
             {STEPS.map((s, i) => (
-              <li key={s.label} aria-current={i === step ? "step" : undefined}>
-                <button
-                  type="button"
-                  aria-label={s.label}
-                  title={s.label}
-                  disabled={i > step}
-                  onClick={() => go(i)}
-                  className={cn(
-                    "block h-1.5 rounded-full transition-all duration-300 disabled:cursor-default",
-                    i === step ? "w-6 bg-ember" : i < step ? "w-1.5 bg-ember/60 hover:bg-ember" : "w-1.5 bg-line-strong",
-                  )}
-                />
-              </li>
+              <span
+                key={s.label}
+                className={cn(
+                  "block h-1.5 rounded-full transition-all duration-300",
+                  i === step ? "w-6 bg-ember" : i < step ? "w-1.5 bg-ember/60" : "w-1.5 bg-line-strong",
+                )}
+              />
             ))}
-          </ol>
+          </div>
         </div>
       </header>
-      <main className="flex flex-1 items-center justify-center px-10 py-10">
+      <main ref={mainRef} className="flex flex-1 items-center justify-center px-10 py-10">
         <div key={step} className="page-enter w-full max-w-[560px]">
           <Component next={() => go(step + 1)} back={() => go(step - 1)} download={download} />
         </div>

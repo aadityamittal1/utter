@@ -1,4 +1,4 @@
-import type { ReactNode } from "react";
+import type { FormEvent, ReactNode } from "react";
 import { ArrowLeft, ArrowRight } from "lucide-react";
 import { Button } from "../components/ui";
 import type { ModelProgress } from "../lib/types";
@@ -17,32 +17,34 @@ export interface DownloadState {
   start: (id: string) => Promise<void>;
 }
 
-export function StepFrame({ eyebrow, title, subtitle, children }: { eyebrow?: string; title: ReactNode; subtitle?: ReactNode; children: ReactNode }) {
+/** A step: heading plus a form, so Enter continues (never inside textareas). */
+export function StepFrame({ eyebrow, title, subtitle, children, onSubmit }: { eyebrow?: string; title: ReactNode; subtitle?: ReactNode; children: ReactNode; onSubmit: () => void }) {
+  const submit = (e: FormEvent) => {
+    e.preventDefault();
+    onSubmit();
+  };
   return (
-    <div className="flex flex-col">
+    <form className="flex flex-col" onSubmit={submit} noValidate>
       {eyebrow && <p className="mb-2 text-xs font-semibold uppercase tracking-[0.12em] text-accent">{eyebrow}</p>}
-      <h1 className="font-display text-[40px] leading-[1.1] text-ink">{title}</h1>
+      <h1 className="font-display text-[40px] leading-[1.1] text-ink outline-none">{title}</h1>
       {subtitle && <p className="mt-3 max-w-[52ch] text-[15px] leading-relaxed text-muted">{subtitle}</p>}
       <div className="mt-7">{children}</div>
-    </div>
+    </form>
   );
 }
 
+/** Back + a submit button for the surrounding StepFrame form. */
 export function StepFooter({
   onBack,
-  onNext,
   nextLabel = "Continue",
   nextDisabled,
   loading,
-  secondary,
   nextVariant = "primary",
 }: {
   onBack?: () => void;
-  onNext: () => void;
   nextLabel?: string;
   nextDisabled?: boolean;
   loading?: boolean;
-  secondary?: ReactNode;
   nextVariant?: "primary" | "secondary";
 }) {
   return (
@@ -53,8 +55,7 @@ export function StepFooter({
         </Button>
       )}
       <div className="flex-1" />
-      {secondary}
-      <Button variant={nextVariant} onClick={onNext} disabled={nextDisabled} loading={loading} className="min-w-28">
+      <Button variant={nextVariant} type="submit" disabled={nextDisabled} loading={loading} className="min-w-28">
         {nextLabel}
         {!loading && <ArrowRight size={15} aria-hidden />}
       </Button>

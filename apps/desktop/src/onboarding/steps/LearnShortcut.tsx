@@ -56,6 +56,7 @@ export function LearnShortcut({ next, back }: StepProps) {
 
   return (
     <StepFrame
+      onSubmit={next}
       eyebrow="Step 5"
       title="Hold to talk"
       subtitle={
@@ -101,7 +102,7 @@ export function LearnShortcut({ next, back }: StepProps) {
         </li>
       </ul>
       {!isTauri() && <p className="mt-3 text-xs text-faint">Preview: press the keys on your keyboard to simulate.</p>}
-      <StepFooter onBack={back} onNext={next} />
+      <StepFooter onBack={back} />
     </StepFrame>
   );
 }

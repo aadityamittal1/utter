@@ -99,3 +99,49 @@ export function buildSnippets(p: PersonalInputs): SnippetDraft[] {
 export function pickModel<T extends { id: string; recommended: boolean; active: boolean }>(models: T[]): T | undefined {
   return models.find((m) => m.recommended) ?? models.find((m) => m.active) ?? models[0];
 }
+
+export const MODEL_KEY = "utter.onboarding.model";
+
+export function loadModelId(): string | null {
+  try {
+    return localStorage.getItem(MODEL_KEY);
+  } catch {
+    return null;
+  }
+}
+
+export function saveModelId(id: string): void {
+  try {
+    localStorage.setItem(MODEL_KEY, id);
+  } catch {
+    /* ignore */
+  }
+}
+
+export function clearModelId(): void {
+  try {
+    localStorage.removeItem(MODEL_KEY);
+  } catch {
+    /* ignore */
+  }
+}
+
+export interface ModelAction {
+  kind: "ready" | "activate" | "pending" | "none";
+  id?: string;
+}
+
+/**
+ * What to do about the speech model right now. `chosenId` is the model the user
+ * picked during onboarding (null if they never got that far).
+ */
+export function modelAction(models: Array<{ id: string; recommended: boolean; downloaded: boolean; active: boolean }>, chosenId: string | null): ModelAction {
+  const chosen = chosenId ? models.find((m) => m.id === chosenId) : undefined;
+  if (chosen) {
+    if (!chosen.downloaded) return { kind: "pending", id: chosen.id };
+    return { kind: chosen.active ? "ready" : "activate", id: chosen.id };
+  }
+  if (models.some((m) => m.active && m.downloaded)) return { kind: "ready" };
+  const rec = models.find((m) => m.recommended && m.downloaded) ?? models.find((m) => m.downloaded);
+  return rec ? { kind: "activate", id: rec.id } : { kind: "none" };
+}

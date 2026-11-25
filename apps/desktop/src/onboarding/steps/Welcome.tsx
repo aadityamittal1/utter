@@ -34,7 +34,7 @@ export function Welcome({ next }: StepProps) {
           </li>
         ))}
       </ul>
-      <Button variant="primary" className="mt-10 h-10 px-5" onClick={next} autoFocus>
+      <Button variant="primary" className="mt-10 h-10 px-5" onClick={next}>
         Get started
       </Button>
     </div>

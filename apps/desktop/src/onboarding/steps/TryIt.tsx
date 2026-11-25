@@ -15,6 +15,7 @@ const SAMPLE: Pick<HistoryItem, "rawText" | "finalText"> = {
 export function TryIt({ next, back }: StepProps) {
   const dictate = useSettings((s) => s.settings?.shortcuts.dictate?.[0]);
   const enhance = useSettings((s) => s.settings?.shortcuts.dictateEnhance?.[0]);
+  const noHistory = useSettings((s) => s.settings?.historyRetention === "never");
   const [baseline, setBaseline] = useState<string | null | undefined>(undefined); // undefined = not loaded yet
   const [latest, setLatest] = useState<Pick<HistoryItem, "rawText" | "finalText"> | null>(null);
   const baselineRef = useRef<string | null | undefined>(undefined);
@@ -57,6 +58,7 @@ export function TryIt({ next, back }: StepProps) {
 
   return (
     <StepFrame
+      onSubmit={next}
       eyebrow="Step 6"
       title="Try it for real"
       subtitle="Click a box below, hold your shortcut, and say a sentence the way you'd naturally say it. Ums and all."
@@ -96,7 +98,11 @@ export function TryIt({ next, back }: StepProps) {
           </div>
         ) : (
           <p className="px-4 py-3.5 text-[13px] text-muted">
-            {baseline === undefined ? "Loading…" : "Your before and after will show up here."}
+            {baseline === undefined
+              ? "Loading…"
+              : noHistory
+                ? "Your history is set to never save, so there's no before and after to show. Dictation still works; you can change this in Settings → Privacy."
+                : "Your before and after will show up here."}
           </p>
         )}
       </div>
@@ -116,7 +122,7 @@ export function TryIt({ next, back }: StepProps) {
           Simulate a dictation (preview only)
         </Button>
       )}
-      <StepFooter onBack={back} onNext={next} />
+      <StepFooter onBack={back} />
     </StepFrame>
   );
 }
