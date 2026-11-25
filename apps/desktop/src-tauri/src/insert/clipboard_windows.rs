@@ -1,1 +1,237 @@
-//! insert::clipboard_windows (stub; implemented in a later task).
+//! Clipboard snapshot / restore and text set, via the Win32 clipboard API.
+
+use std::time::Duration;
+
+use ::windows::Win32::Foundation::{GlobalFree, HANDLE, HGLOBAL};
+use ::windows::Win32::System::DataExchange::{
+    CloseClipboard, EmptyClipboard, EnumClipboardFormats, GetClipboardData,
+    GetClipboardSequenceNumber, OpenClipboard, SetClipboardData,
+};
+use ::windows::Win32::System::Memory::{
+    GlobalAlloc, GlobalLock, GlobalSize, GlobalUnlock, GMEM_MOVEABLE,
+};
+
+pub const CF_UNICODETEXT: u32 = 13;
+
+/// Formats that are handles to GDI objects (not HGLOBAL byte blobs) or are synthesized by
+/// Windows from other formats; these are skipped when snapshotting.
+fn skip_format(fmt: u32) -> bool {
+    matches!(
+        fmt,
+        1 // CF_TEXT (synthesized from UNICODETEXT)
+        | 2 // CF_BITMAP (GDI handle; synthesized from DIB)
+        | 3 // CF_METAFILEPICT
+        | 7 // CF_OEMTEXT
+        | 9 // CF_PALETTE
+        | 14 // CF_ENHMETAFILE
+        | 0x0080..=0x008F // CF_OWNERDISPLAY / DSP*
+    ) || (0x0300..=0x03FF).contains(&fmt) // CF_GDIOBJFIRST..LAST
+}
+
+/// Open the clipboard, retrying (it can be briefly held by another process).
+fn open_clipboard() -> anyhow::Result<()> {
+    let mut last = None;
+    for _ in 0..20 {
+        // SAFETY: plain Win32 call; the clipboard is closed by `ClipboardGuard`.
+        match unsafe { OpenClipboard(None) } {
+            Ok(()) => return Ok(()),
+            Err(e) => last = Some(e),
+        }
+        std::thread::sleep(Duration::from_millis(10));
+    }
+    Err(anyhow::anyhow!("could not open clipboard: {:?}", last))
+}
+
+struct ClipboardGuard;
+
+impl ClipboardGuard {
+    fn open() -> anyhow::Result<Self> {
+        open_clipboard()?;
+        Ok(Self)
+    }
+}
+
+impl Drop for ClipboardGuard {
+    fn drop(&mut self) {
+        // SAFETY: we hold the clipboard open (guard only exists after a successful open).
+        unsafe {
+            let _ = CloseClipboard();
+        }
+    }
+}
+
+pub fn clipboard_seq() -> u32 {
+    // SAFETY: no preconditions.
+    unsafe { GetClipboardSequenceNumber() }
+}
+
+/// Allocate a moveable global block holding `bytes` and hand it to the (already open,
+/// emptied) clipboard under `fmt`. Ownership transfers to the system on success.
+fn put_bytes(fmt: u32, bytes: &[u8]) -> anyhow::Result<()> {
+    // SAFETY: standard GlobalAlloc/GlobalLock/copy/SetClipboardData sequence; the block is
+    // freed ourselves only when SetClipboardData fails.
+    unsafe {
+        let hmem = GlobalAlloc(GMEM_MOVEABLE, bytes.len().max(1))?;
+        let ptr = GlobalLock(hmem) as *mut u8;
+        if ptr.is_null() {
+            let _ = GlobalFree(Some(hmem));
+            anyhow::bail!("GlobalLock failed");
+        }
+        std::ptr::copy_nonoverlapping(bytes.as_ptr(), ptr, bytes.len());
+        let _ = GlobalUnlock(hmem);
+        if let Err(e) = SetClipboardData(fmt, Some(HANDLE(hmem.0))) {
+            let _ = GlobalFree(Some(hmem));
+            return Err(e.into());
+        }
+    }
+    Ok(())
+}
+
+/// Replace the clipboard contents with `text`; returns the clipboard sequence number after the set.
+pub fn set_clipboard_text(text: &str) -> anyhow::Result<u32> {
+    let mut wide: Vec<u16> = text.encode_utf16().collect();
+    wide.push(0);
+    let bytes: Vec<u8> = wide.iter().flat_map(|w| w.to_le_bytes()).collect();
+    {
+        let _g = ClipboardGuard::open()?;
+        // SAFETY: clipboard is open.
+        unsafe { EmptyClipboard()? };
+        put_bytes(CF_UNICODETEXT, &bytes)?;
+    }
+    Ok(clipboard_seq())
+}
+
+/// Read the clipboard's current text, if any.
+pub fn get_clipboard_text() -> Option<String> {
+    let _g = ClipboardGuard::open().ok()?;
+    let bytes = read_format(CF_UNICODETEXT)?;
+    let wide: Vec<u16> = bytes
+        .chunks_exact(2)
+        .map(|c| u16::from_le_bytes([c[0], c[1]]))
+        .collect();
+    let end = wide.iter().position(|&w| w == 0).unwrap_or(wide.len());
+    Some(String::from_utf16_lossy(&wide[..end]))
+}
+
+/// Read one format as bytes. Caller must hold the clipboard open.
+fn read_format(fmt: u32) -> Option<Vec<u8>> {
+    // SAFETY: clipboard is open; the handle is an HGLOBAL for byte formats, locked while read.
+    unsafe {
+        let h = GetClipboardData(fmt).ok()?;
+        if h.0.is_null() {
+            return None;
+        }
+        let hg = HGLOBAL(h.0);
+        let size = GlobalSize(hg);
+        if size == 0 {
+            return None;
+        }
+        let ptr = GlobalLock(hg) as *const u8;
+        if ptr.is_null() {
+            return None;
+        }
+        let v = std::slice::from_raw_parts(ptr, size).to_vec();
+        let _ = GlobalUnlock(hg);
+        Some(v)
+    }
+}
+
+/// Every byte-readable clipboard format at a moment in time.
+#[derive(Debug, Default, Clone)]
+pub struct ClipboardSnapshot {
+    formats: Vec<(u32, Vec<u8>)>,
+}
+
+impl ClipboardSnapshot {
+    pub fn take() -> Self {
+        let Ok(_g) = ClipboardGuard::open() else {
+            return Self::default();
+        };
+        let mut formats = Vec::new();
+        let mut fmt = 0u32;
+        loop {
+            // SAFETY: clipboard is open.
+            fmt = unsafe { EnumClipboardFormats(fmt) };
+            if fmt == 0 {
+                break;
+            }
+            if skip_format(fmt) {
+                continue;
+            }
+            if let Some(bytes) = read_format(fmt) {
+                formats.push((fmt, bytes));
+            }
+        }
+        Self { formats }
+    }
+
+    pub fn is_empty(&self) -> bool {
+        self.formats.is_empty()
+    }
+
+    pub fn has_format(&self, fmt: u32) -> bool {
+        self.formats.iter().any(|(f, _)| *f == fmt)
+    }
+
+    pub fn restore(&self) {
+        let Ok(_g) = ClipboardGuard::open() else {
+            return;
+        };
+        // SAFETY: clipboard is open.
+        if unsafe { EmptyClipboard() }.is_err() {
+            return;
+        }
+        for (fmt, bytes) in &self.formats {
+            let _ = put_bytes(*fmt, bytes);
+        }
+    }
+}
+
+/// True if the clipboard currently offers `fmt`.
+pub fn clipboard_has_format(fmt: u32) -> bool {
+    let Ok(_g) = ClipboardGuard::open() else {
+        return false;
+    };
+    // SAFETY: clipboard is open.
+    let mut f = 0u32;
+    loop {
+        f = unsafe { EnumClipboardFormats(f) };
+        if f == 0 {
+            return false;
+        }
+        if f == fmt {
+            return true;
+        }
+    }
+}
+
+/// Place a small 2x2 24-bit DIB on the clipboard (used by tests).
+pub fn set_clipboard_dib_for_test() -> anyhow::Result<()> {
+    // BITMAPINFOHEADER (40 bytes) + 2 rows of 8 bytes (2px*3 + 2 pad).
+    let mut b = Vec::new();
+    b.extend_from_slice(&40u32.to_le_bytes());
+    b.extend_from_slice(&2i32.to_le_bytes());
+    b.extend_from_slice(&2i32.to_le_bytes());
+    b.extend_from_slice(&1u16.to_le_bytes());
+    b.extend_from_slice(&24u16.to_le_bytes());
+    b.extend_from_slice(&[0u8; 24]);
+    b.extend_from_slice(&[255, 0, 0, 0, 255, 0, 0, 0, 0, 0, 255, 0, 0, 0, 0, 0]);
+    let _g = ClipboardGuard::open()?;
+    // SAFETY: clipboard is open.
+    unsafe { EmptyClipboard()? };
+    put_bytes(8, &b)
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn skip_rules() {
+        assert!(skip_format(2));
+        assert!(skip_format(0x0301));
+        assert!(!skip_format(CF_UNICODETEXT));
+        assert!(!skip_format(8));
+        assert!(!skip_format(15));
+    }
+}
