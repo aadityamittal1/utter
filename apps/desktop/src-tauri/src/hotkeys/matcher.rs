@@ -106,6 +106,15 @@ impl Matcher {
         }
     }
 
+    /// Key sets of every bound modifier-only chord (e.g. Ctrl+Win), for the hook watchdog.
+    pub fn modifier_only_chords(&self) -> Vec<Vec<Key>> {
+        self.bindings
+            .iter()
+            .filter(|b| b.chord.is_modifier_only())
+            .map(|b| b.chord.keys().iter().copied().collect())
+            .collect()
+    }
+
     /// Replace bindings (settings changed). Drops all in-flight state.
     pub fn set_bindings(&mut self, bindings: Vec<Binding>) {
         let recording = self.recording;

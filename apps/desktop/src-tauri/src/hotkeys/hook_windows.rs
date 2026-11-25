@@ -8,27 +8,81 @@
 use super::chord::{key_from_vk, Chord, Key};
 use super::matcher::{HotkeyEvent, Matcher};
 use ::windows::Win32::Foundation::{LPARAM, LRESULT, WPARAM};
+use ::windows::Win32::System::Threading::{
+    GetCurrentThread, SetThreadPriority, THREAD_PRIORITY_TIME_CRITICAL,
+};
 use ::windows::Win32::UI::Input::KeyboardAndMouse::{
     GetAsyncKeyState, SendInput, INPUT, INPUT_0, INPUT_KEYBOARD, KEYBDINPUT, KEYBD_EVENT_FLAGS,
     KEYEVENTF_KEYUP, VIRTUAL_KEY,
 };
 use ::windows::Win32::UI::WindowsAndMessaging::{
     CallNextHookEx, GetMessageW, PeekMessageW, PostThreadMessageW, SetWindowsHookExW,
-    UnhookWindowsHookEx, HHOOK, KBDLLHOOKSTRUCT, MSG, PM_NOREMOVE, WH_KEYBOARD_LL, WM_KEYDOWN,
-    WM_KEYUP, WM_QUIT, WM_SYSKEYDOWN, WM_SYSKEYUP, WM_USER,
+    UnhookWindowsHookEx, KBDLLHOOKSTRUCT, MSG, PM_NOREMOVE, WH_KEYBOARD_LL, WM_KEYDOWN, WM_KEYUP,
+    WM_QUIT, WM_SYSKEYDOWN, WM_SYSKEYUP, WM_USER,
 };
 use anyhow::{anyhow, Result};
 use std::collections::BTreeSet;
 use std::panic::{catch_unwind, AssertUnwindSafe};
+use std::sync::atomic::{AtomicBool, AtomicU64, Ordering};
 use std::sync::mpsc::{self, Sender};
-use std::sync::{Arc, Mutex, MutexGuard};
+use std::sync::{Arc, Mutex, MutexGuard, OnceLock};
 use std::thread::JoinHandle;
-use std::time::Duration;
+use std::time::{Duration, Instant};
 
 const LLKHF_INJECTED: u32 = 0x10;
 /// Unassigned virtual key used to "mask" a Win/Alt tap.
 const VK_MASK: u16 = 0xE8;
 const VK_PACKET: u16 = 0xE7;
+/// Thread message asking the hook thread to remove and re-install the hook.
+const WM_REHOOK: u32 = WM_USER + 1;
+
+// ---- watchdog ----
+//
+// Windows silently removes a low-level hook whose callback exceeds LowLevelHooksTimeout (seen
+// under heavy CPU load). A watchdog notices that modifiers are physically held while the hook
+// saw no event, and re-installs it.
+
+const WATCHDOG_POLL: Duration = Duration::from_millis(100);
+/// Keys of a bound modifier-only chord held this long with a silent hook = hook is dead.
+const HELD_THRESHOLD: Duration = Duration::from_millis(400);
+/// Allowance for the poll interval when comparing the hold start with the last hook event.
+const POLL_SLACK: Duration = Duration::from_millis(150);
+/// Re-install the hook this often while no modifier is held (cheap insurance).
+const PERIODIC_REHOOK: Duration = Duration::from_secs(60);
+/// A watchdog tick this late means the machine slept or stalled: re-install.
+const STALL_GAP: Duration = Duration::from_secs(5);
+
+/// Milliseconds since epoch() of the last event the hook callback saw.
+static LAST_EVENT_MS: AtomicU64 = AtomicU64::new(0);
+static HOOK_INSTALLED: AtomicBool = AtomicBool::new(false);
+
+fn epoch() -> Instant {
+    static EPOCH: OnceLock<Instant> = OnceLock::new();
+    *EPOCH.get_or_init(Instant::now)
+}
+
+fn note_event() {
+    LAST_EVENT_MS.store(epoch().elapsed().as_millis() as u64, Ordering::Relaxed);
+}
+
+fn last_event_age() -> Duration {
+    let now = epoch().elapsed().as_millis() as u64;
+    Duration::from_millis(now.saturating_sub(LAST_EVENT_MS.load(Ordering::Relaxed)))
+}
+
+/// The hook is presumed removed when a chord has been physically held past the threshold
+/// but the hook has seen nothing since before the hold began.
+pub fn should_rehook(held_for: Option<Duration>, last_event_age: Duration) -> bool {
+    match held_for {
+        Some(h) if h >= HELD_THRESHOLD => last_event_age > h + POLL_SLACK,
+        _ => false,
+    }
+}
+
+/// Routine re-install: only when no modifier is held, at most once per period.
+pub fn periodic_rehook_due(since_last_rehook: Duration, any_modifier_down: bool) -> bool {
+    !any_modifier_down && since_last_rehook >= PERIODIC_REHOOK
+}
 
 /// One physical key event that produced hotkey events (events are never empty).
 #[derive(Debug, Clone)]
@@ -131,6 +185,8 @@ fn lock_ctx() -> MutexGuard<'static, Option<Ctx>> {
 pub struct HookHandle {
     thread_id: u32,
     join: Option<JoinHandle<()>>,
+    stop: Arc<AtomicBool>,
+    watchdog: Option<JoinHandle<()>>,
 }
 
 impl HookHandle {
@@ -139,6 +195,10 @@ impl HookHandle {
     }
 
     fn shutdown(&mut self) {
+        self.stop.store(true, Ordering::Relaxed);
+        if let Some(w) = self.watchdog.take() {
+            let _ = w.join();
+        }
         if let Some(j) = self.join.take() {
             // SAFETY: plain thread-message post to our own hook thread (its queue exists: it is
             // created before the thread signals ready).
@@ -172,8 +232,8 @@ pub fn start_hook(matcher: Arc<Mutex<Matcher>>, tx: Sender<RawKey>) -> Result<Ho
             return Err(anyhow!("keyboard hook already running"));
         }
         *ctx = Some(Ctx {
-            matcher,
-            tx,
+            matcher: matcher.clone(),
+            tx: tx.clone(),
             capture: None,
             stale_ups: BTreeSet::new(),
             clock: Clock::default(),
@@ -184,6 +244,12 @@ pub fn start_hook(matcher: Arc<Mutex<Matcher>>, tx: Sender<RawKey>) -> Result<Ho
         .name("utter-hotkey-hook".into())
         .spawn(move || {
             let mut msg = MSG::default();
+            // Be scheduled promptly even when every core is busy: a slow callback gets the hook
+            // removed by Windows.
+            // SAFETY: plain priority change of the current thread.
+            unsafe {
+                let _ = SetThreadPriority(GetCurrentThread(), THREAD_PRIORITY_TIME_CRITICAL);
+            }
             // SAFETY: standard LL hook install on a thread that pumps messages below. The
             // PeekMessageW call forces creation of this thread's message queue before we
             // report ready, so PostThreadMessageW(WM_QUIT) cannot fail for lack of a queue.
@@ -199,18 +265,47 @@ pub fn start_hook(matcher: Arc<Mutex<Matcher>>, tx: Sender<RawKey>) -> Result<Ho
                 }
             };
             let tid = unsafe { ::windows::Win32::System::Threading::GetCurrentThreadId() };
+            note_event();
+            HOOK_INSTALLED.store(true, Ordering::Relaxed);
             let _ = ready_tx.send(Ok(tid));
+            let mut hook = Some(hook);
             // SAFETY: message loop; exits on WM_QUIT (returns 0) or error (-1).
             unsafe {
-                while GetMessageW(&mut msg, None, 0, 0).0 > 0 {}
-                let _ = UnhookWindowsHookEx(HHOOK(hook.0));
+                while GetMessageW(&mut msg, None, 0, 0).0 > 0 {
+                    if msg.message == WM_REHOOK {
+                        if let Some(h) = hook.take() {
+                            let _ = UnhookWindowsHookEx(h);
+                        }
+                        hook = SetWindowsHookExW(WH_KEYBOARD_LL, Some(hook_proc), None, 0).ok();
+                        HOOK_INSTALLED.store(hook.is_some(), Ordering::Relaxed);
+                        if hook.is_none() {
+                            log::error!("keyboard hook re-install failed");
+                        }
+                    }
+                }
+                if let Some(h) = hook.take() {
+                    let _ = UnhookWindowsHookEx(h);
+                }
+                HOOK_INSTALLED.store(false, Ordering::Relaxed);
             }
         })?;
     match ready_rx.recv_timeout(Duration::from_secs(5)) {
-        Ok(Ok(thread_id)) => Ok(HookHandle {
-            thread_id,
-            join: Some(join),
-        }),
+        Ok(Ok(thread_id)) => {
+            let stop = Arc::new(AtomicBool::new(false));
+            let watchdog = {
+                let stop = stop.clone();
+                std::thread::Builder::new()
+                    .name("utter-hotkey-watchdog".into())
+                    .spawn(move || watchdog(thread_id, matcher, tx, stop))
+                    .ok()
+            };
+            Ok(HookHandle {
+                thread_id,
+                join: Some(join),
+                stop,
+                watchdog,
+            })
+        }
         Ok(Err(e)) => {
             *lock_ctx() = None;
             Err(anyhow!("SetWindowsHookExW failed: {e}"))
@@ -218,6 +313,67 @@ pub fn start_hook(matcher: Arc<Mutex<Matcher>>, tx: Sender<RawKey>) -> Result<Ho
         Err(_) => {
             *lock_ctx() = None;
             Err(anyhow!("keyboard hook thread did not start"))
+        }
+    }
+}
+
+fn post_rehook(thread_id: u32) {
+    // SAFETY: plain thread-message post to our own hook thread.
+    let _ = unsafe { PostThreadMessageW(thread_id, WM_REHOOK, WPARAM(0), LPARAM(0)) };
+}
+
+fn watchdog(
+    thread_id: u32,
+    matcher: Arc<Mutex<Matcher>>,
+    tx: Sender<RawKey>,
+    stop: Arc<AtomicBool>,
+) {
+    let mut held_since: Option<Instant> = None;
+    let mut last_rehook = Instant::now();
+    let mut last_tick = Instant::now();
+    while !stop.load(Ordering::Relaxed) {
+        std::thread::sleep(WATCHDOG_POLL);
+        let now = Instant::now();
+        let gap = now.duration_since(last_tick);
+        last_tick = now;
+        let chords = matcher
+            .lock()
+            .unwrap_or_else(|e| e.into_inner())
+            .modifier_only_chords();
+        let held = chords
+            .iter()
+            .any(|c| !c.is_empty() && c.iter().all(|&k| key_is_down(k)));
+        if held {
+            held_since.get_or_insert(now);
+        } else {
+            held_since = None;
+        }
+        let held_for = held_since.map(|s| now.duration_since(s));
+        if should_rehook(held_for, last_event_age()) {
+            log::warn!("keyboard hook was removed by Windows; reinstalled");
+            let events = matcher.lock().unwrap_or_else(|e| e.into_inner()).reset();
+            if !events.is_empty() {
+                let _ = tx.send(RawKey {
+                    key: Key::Ctrl,
+                    down: false,
+                    t_ms: 0,
+                    events,
+                });
+            }
+            note_event();
+            post_rehook(thread_id);
+            last_rehook = now;
+            continue;
+        }
+        let any_mod = [Key::Ctrl, Key::Win, Key::Alt, Key::Shift]
+            .into_iter()
+            .any(key_is_down);
+        if gap >= STALL_GAP
+            || periodic_rehook_due(now.duration_since(last_rehook), any_mod)
+            || (!HOOK_INSTALLED.load(Ordering::Relaxed) && !any_mod)
+        {
+            post_rehook(thread_id);
+            last_rehook = now;
         }
     }
 }
@@ -373,6 +529,7 @@ unsafe extern "system" fn hook_proc(code: i32, wparam: WPARAM, lparam: LPARAM) -
     if code < 0 {
         return CallNextHookEx(None, code, wparam, lparam);
     }
+    note_event();
     // SAFETY: for WH_KEYBOARD_LL, lparam points to a KBDLLHOOKSTRUCT valid for this call.
     let (vk, flags, time) = {
         let info = &*(lparam.0 as *const KBDLLHOOKSTRUCT);
@@ -435,6 +592,28 @@ mod tests {
             c.on_key(Key::Vk(0x42), false),
             CaptureStep::Done(Err(CaptureError::InvalidChord))
         );
+    }
+
+    #[test]
+    fn rehook_needs_a_long_hold_and_a_silent_hook() {
+        let ms = Duration::from_millis;
+        // Not held, or held briefly: never.
+        assert!(!should_rehook(None, ms(60_000)));
+        assert!(!should_rehook(Some(ms(399)), ms(60_000)));
+        // Held long, hook saw the key-down (event age ~ hold time): healthy.
+        assert!(!should_rehook(Some(ms(400)), ms(450)));
+        assert!(!should_rehook(Some(ms(5_000)), ms(5_100)));
+        assert!(!should_rehook(Some(ms(500)), ms(10)));
+        // Held long, hook silent since long before the hold began: dead.
+        assert!(should_rehook(Some(ms(400)), ms(2_000)));
+        assert!(should_rehook(Some(ms(450)), ms(10_000)));
+    }
+
+    #[test]
+    fn periodic_rehook_waits_for_idle_keys() {
+        assert!(!periodic_rehook_due(Duration::from_secs(59), false));
+        assert!(!periodic_rehook_due(Duration::from_secs(120), true));
+        assert!(periodic_rehook_due(Duration::from_secs(60), false));
     }
 
     #[test]
