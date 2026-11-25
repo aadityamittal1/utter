@@ -1,0 +1,60 @@
+name: Bug report
+description: Something in Utter is not working
+labels: [bug]
+body:
+  - type: markdown
+    attributes:
+      value: |
+        Thanks for taking the time. Never paste your Anthropic API key or private dictated text into an issue.
+  - type: input
+    id: version
+    attributes:
+      label: Utter version
+      description: Settings, About.
+      placeholder: "0.1.0"
+    validations:
+      required: true
+  - type: dropdown
+    id: arch
+    attributes:
+      label: Architecture
+      options:
+        - x64
+        - ARM64
+    validations:
+      required: true
+  - type: input
+    id: os
+    attributes:
+      label: Windows version
+      placeholder: "Windows 11 23H2 (build 22631)"
+    validations:
+      required: true
+  - type: textarea
+    id: steps
+    attributes:
+      label: Steps to reproduce
+      description: Which app was focused, which shortcut you used, what you said (roughly).
+      placeholder: |
+        1. Focus Notepad
+        2. Hold Ctrl+Win and say "..."
+        3. Release
+    validations:
+      required: true
+  - type: textarea
+    id: expected
+    attributes:
+      label: What did you expect, and what happened instead?
+    validations:
+      required: true
+  - type: textarea
+    id: logs
+    attributes:
+      label: Logs
+      description: Anything shown in the pill or the app, or log output. Remove any personal text first.
+      render: text
+  - type: input
+    id: model
+    attributes:
+      label: Speech model and AI settings
+      placeholder: "base, Haiku 5.5, cleanup Light"
