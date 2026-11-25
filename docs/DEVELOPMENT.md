@@ -58,3 +58,31 @@ Notes from the emulated run:
 - Thread count matters enormously: with 6 or more threads whisper.cpp was 50x+ slower than with 4 (spin-wait contention under emulation). The engine therefore defaults to `min(cores, 4)` threads; set `UTTER_THREADS=<n>` to override while benchmarking.
 - The release numbers above were measured with whisper-rs-sys built with extra CMake env vars (`CMAKE_C_FLAGS_RELEASE=CMAKE_CXX_FLAGS_RELEASE="/O2 /Ob2 /DNDEBUG /MD"`, `GGML_AVX=GGML_AVX2=GGML_FMA=GGML_F16C=ON`). They are probably unnecessary: the ignored `transcribe` test, built with the default flags in the debug profile (which uses `RelWithDebInfo`), transcribed `hello.wav` in 3.9 s total at 4 threads. The thread count was the real problem. Run `cargo clean -p whisper-rs-sys` after changing such variables.
 - `tests/transcribe.rs` (ignored by default) needs `ggml-base.bin` downloaded: `cargo test --test transcribe -- --ignored`.
+
+## Project layout
+
+See [ARCHITECTURE.md](ARCHITECTURE.md) for the module map and dictation pipeline.
+
+## Running the UI without Tauri
+
+`npm run dev` in `apps/desktop` serves the UI in a browser with an in-memory mock backend (`src/lib/mock.ts`), which is the fastest way to iterate on screens.
+
+## Checks (same as CI)
+
+```
+cd apps/desktop
+npm run typecheck && npm run lint && npm test && npm run build
+
+cd src-tauri
+cargo fmt --check
+cargo clippy --all-targets -- -D warnings
+cargo test --lib
+```
+
+`npm run build` must run before cargo, because Tauri embeds the built `dist`.
+
+## Releases
+
+Pushing a tag `v*` runs `.github/workflows/release.yml`, which builds unsigned NSIS installers for x64 and ARM64 and attaches them to a **draft** GitHub Release. Bump the version in `apps/desktop/package.json`, `src-tauri/Cargo.toml` and `src-tauri/tauri.conf.json`, and update `CHANGELOG.md` first. CI and releases use a short `CARGO_TARGET_DIR` (`C:\t`) for the long-path issue above.
+
+Utter is a Windows app: Rust commands that link the Tauri crate must run on Windows with MSVC and LLVM (see Prerequisites).
