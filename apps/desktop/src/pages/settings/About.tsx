@@ -49,7 +49,7 @@ export default function About() {
         <ul className="flex flex-col gap-1.5 py-4 text-sm text-muted">
           <li>whisper.cpp (MIT) runs speech recognition on your PC.</li>
           <li>Tauri builds the desktop shell.</li>
-          <li>Claude by Anthropic powers optional text cleanup and rewriting.</li>
+          <li>AI cleanup: Claude Haiku via your own Anthropic API key</li>
         </ul>
       </Section>
     </div>

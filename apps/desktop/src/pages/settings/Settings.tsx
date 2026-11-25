@@ -76,7 +76,7 @@ export default function Settings() {
               onClick={() => select(t.id)}
               onKeyDown={(e) => onKey(e, i)}
               className={cn(
-                "relative -mb-px h-10 rounded-t-control px-3 text-sm font-medium transition-colors",
+                "relative -mb-px h-10 rounded-t-control px-3 text-sm font-medium transition-colors focus-visible:outline-2 focus-visible:outline-offset-[-2px] focus-visible:outline-[var(--ring)]",
                 on ? "text-ink" : "text-muted hover:text-ink",
               )}
             >
@@ -86,7 +86,7 @@ export default function Settings() {
           );
         })}
       </div>
-      <div id="settings-panel" role="tabpanel" aria-labelledby={`settings-tab-${active.id}`}>
+      <div id="settings-panel" role="tabpanel" tabIndex={0} className="rounded-control focus-visible:outline-2 focus-visible:outline-offset-4 focus-visible:outline-[var(--ring)]" aria-labelledby={`settings-tab-${active.id}`}>
         <Active />
       </div>
     </div>

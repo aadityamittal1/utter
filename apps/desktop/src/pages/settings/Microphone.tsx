@@ -1,4 +1,4 @@
-import { useEffect, useRef, useState } from "react";
+import { useCallback, useEffect, useRef, useState } from "react";
 import { Mic, MicOff } from "lucide-react";
 import { Button, Select } from "../../components/ui";
 import { ipc } from "../../lib/ipc";
@@ -12,7 +12,9 @@ export default function Microphone() {
   const [error, setError] = useState<string | null>(null);
   const [testing, setTesting] = useState(false);
   const [level, setLevel] = useState(0);
-  const testingRef = useRef(false);
+  /** A start was issued and no stop has been issued since: the mic may be open. */
+  const startedRef = useRef(false);
+  const unmountedRef = useRef(false);
 
   useEffect(() => {
     ipc
@@ -22,32 +24,56 @@ export default function Microphone() {
   }, []);
 
   useBackendEvent("mic://level", (l) => {
-    if (testingRef.current) setLevel(Math.max(0, Math.min(1, l)));
+    if (startedRef.current) setLevel(Math.max(0, Math.min(1, l)));
   });
 
-  // Always release the mic when leaving the tab.
-  useEffect(
-    () => () => {
-      if (testingRef.current) void ipc.stopMicTest().catch(() => undefined);
-    },
-    [],
-  );
+  /** Release the mic whenever a start was issued, even if it hasn't resolved yet. */
+  const release = useCallback(() => {
+    if (!startedRef.current) return;
+    startedRef.current = false;
+    void ipc.stopMicTest().catch(() => undefined);
+  }, []);
+
+  useEffect(() => {
+    unmountedRef.current = false;
+    const onVisibility = () => {
+      if (document.visibilityState === "hidden" && startedRef.current) {
+        release();
+        setTesting(false);
+        setLevel(0);
+      }
+    };
+    document.addEventListener("visibilitychange", onVisibility);
+    return () => {
+      unmountedRef.current = true;
+      document.removeEventListener("visibilitychange", onVisibility);
+      release();
+    };
+  }, [release]);
 
   const toggle = async () => {
     setError(null);
+    if (testing) {
+      setTesting(false);
+      setLevel(0);
+      release();
+      return;
+    }
+    startedRef.current = true; // before the await: leaving mid-start must still stop
+    setTesting(true);
     try {
-      if (testing) {
-        testingRef.current = false;
-        setTesting(false);
-        setLevel(0);
-        await ipc.stopMicTest();
-      } else {
-        await ipc.startMicTest();
-        testingRef.current = true;
-        setTesting(true);
+      await ipc.startMicTest();
+      if (unmountedRef.current || !startedRef.current) {
+        // Left the tab (or stopped) while the start was in flight.
+        startedRef.current = true;
+        release();
       }
     } catch (e) {
-      setError(String(e));
+      startedRef.current = false;
+      if (!unmountedRef.current) {
+        setTesting(false);
+        setError(String(e));
+      }
     }
   };
 

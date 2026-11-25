@@ -4,7 +4,7 @@ import { Button, IconButton, ShortcutRecorder } from "../../components/ui";
 import { ipc } from "../../lib/ipc";
 import { toast, useSettings } from "../../lib/store";
 import type { Action, Transform } from "../../lib/types";
-import { actionLabel, conflictsFor, removeBinding, setBinding } from "./helpers";
+import { actionLabel, conflictsFor, findConflicts, removeBinding, setBinding } from "./helpers";
 import { Section, WithSettings } from "./parts";
 
 const CORE: Array<{ action: Action; title: string; hint: string }> = [
@@ -36,10 +36,14 @@ export default function Shortcuts() {
           ...CORE,
           ...transforms.map((t) => ({ action: `transform:${t.id}` as Action, title: t.name, hint: "Rewrites the selected text." })),
         ];
-        const save = (shortcuts: typeof s.shortcuts) => void update({ shortcuts });
+        // Compute from the latest store state at save time, not this render's snapshot.
+        const mutate = (fn: (cur: typeof s.shortcuts) => typeof s.shortcuts) =>
+          void update({ shortcuts: fn(useSettings.getState().settings?.shortcuts ?? s.shortcuts) });
+        const allConflicts = findConflicts(s.shortcuts);
         const reset = async () => {
           try {
-            useSettings.getState().replace(await ipc.resetShortcuts());
+            await ipc.resetShortcuts();
+            await useSettings.getState().load();
             toast.success("Shortcuts reset to defaults");
           } catch (e) {
             toast.error(String(e));
@@ -47,6 +51,12 @@ export default function Shortcuts() {
         };
         return (
           <div className="flex flex-col gap-4">
+            {allConflicts.length > 0 && (
+              <p role="alert" className="flex items-center gap-2 rounded-control bg-danger-soft px-3 py-2 text-[13px] text-danger">
+                <AlertTriangle size={14} aria-hidden />
+                {allConflicts.length === 1 ? "One shortcut is" : `${allConflicts.length} shortcuts are`} used by more than one action. Only one will fire.
+              </p>
+            )}
             <Section title="Shortcuts" description="Click a shortcut, then press the keys you want. Each action can have more than one.">
               {rows.map(({ action, title, hint }) => {
                 const chords = s.shortcuts[action] ?? [];
@@ -68,11 +78,16 @@ export default function Shortcuts() {
                                 value={chord || undefined}
                                 onChange={(c) => {
                                   setAdding(null);
-                                  save(setBinding(s.shortcuts, action, i, c));
+                                  mutate((cur) => setBinding(cur, action, i, c));
                                 }}
                               />
+                              {!chord && adding === action && (
+                                <IconButton label={`Cancel adding ${title} shortcut`} onClick={() => setAdding(null)}>
+                                  <X size={15} />
+                                </IconButton>
+                              )}
                               {chord && (
-                                <IconButton label={`Remove ${title} shortcut`} onClick={() => save(removeBinding(s.shortcuts, action, i))}>
+                                <IconButton label={`Remove ${title} shortcut`} onClick={() => mutate((cur) => removeBinding(cur, action, i))}>
                                   <X size={15} />
                                 </IconButton>
                               )}

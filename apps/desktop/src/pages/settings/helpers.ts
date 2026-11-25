@@ -13,12 +13,21 @@ export interface ShortcutConflict {
   actions: Action[];
 }
 
-const norm = (c: string) =>
-  c
+const MOD_ORDER = ["ctrl", "win", "alt", "shift"];
+const ALIASES: Record<string, string> = { control: "ctrl", meta: "win", super: "win", windows: "win", cmd: "win", escape: "esc", option: "alt" };
+
+/** Canonical form for comparing chords: lowercase, aliases resolved, modifiers in Ctrl+Win+Alt+Shift order. */
+export function normalizeChord(c: string): string {
+  const parts = c
     .split("+")
     .map((s) => s.trim().toLowerCase())
     .filter(Boolean)
-    .join("+");
+    .map((p) => ALIASES[p] ?? p);
+  const mods = MOD_ORDER.filter((m) => parts.includes(m));
+  const rest = [...new Set(parts.filter((p) => !MOD_ORDER.includes(p)))];
+  return [...mods, ...rest].join("+");
+}
+const norm = normalizeChord;
 
 type Shortcuts = Settings["shortcuts"];
 

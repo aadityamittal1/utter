@@ -81,67 +81,97 @@ function ClearHistory() {
   );
 }
 
+const hasMatch = (r: CategoryRule) => !!r.process?.trim() || !!r.titleContains?.trim();
+
 function RulesEditor({ rules, onChange }: { rules: CategoryRule[]; onChange: (r: CategoryRule[]) => void }) {
-  // Edit locally, commit text fields on blur so each keystroke isn't a save.
+  // Rows are edited locally. Only rules with a process or title are ever persisted,
+  // so a freshly added blank row can't override classification for every app.
   const [draft, setDraft] = useState(rules);
   const [seen, setSeen] = useState(rules);
-  if (seen !== rules) {
+  const [focused, setFocused] = useState(false);
+  if (seen !== rules && !focused) {
     setSeen(rules);
     setDraft(rules);
   }
 
+  const persist = (next: CategoryRule[]) => {
+    const cleaned = next.map(cleanRule).filter(hasMatch);
+    if (JSON.stringify(cleaned) !== JSON.stringify(rules.map(cleanRule))) onChange(cleaned);
+  };
   const commit = (next: CategoryRule[]) => {
     setDraft(next);
-    onChange(next.map(cleanRule));
+    persist(next);
   };
   const patch = (i: number, p: Partial<CategoryRule>) => setDraft((d) => d.map((r, j) => (j === i ? { ...r, ...p } : r)));
-  const isEmpty = (r: CategoryRule) => !r.process?.trim() && !r.titleContains?.trim();
 
   return (
-    <div className="py-4">
+    <div
+      className="py-4"
+      onFocus={() => setFocused(true)}
+      onBlur={(e) => {
+        if (!e.currentTarget.contains(e.relatedTarget as Node | null)) setFocused(false);
+      }}
+    >
       {draft.length === 0 ? (
         <p className="rounded-control border border-dashed border-line-strong px-4 py-6 text-center text-[13px] text-muted">
           No rules yet. Utter guesses the category from the app. Add a rule to override it, for example <span className="font-mono">code.exe</span> as Code.
         </p>
       ) : (
-        <div role="table" aria-label="Category rules" className="flex flex-col gap-2">
-          <div role="row" className="grid grid-cols-[150px_1fr_1fr_88px] gap-2 px-1 text-xs text-muted">
-            <span role="columnheader">Category</span>
-            <span role="columnheader">Process name</span>
-            <span role="columnheader">Title contains</span>
-            <span role="columnheader" className="sr-only">
-              Actions
-            </span>
-          </div>
-          {draft.map((r, i) => (
-            <div role="row" key={i} className="grid grid-cols-[150px_1fr_1fr_88px] items-center gap-2">
-              <Select aria-label={`Rule ${i + 1} category`} value={r.category} onChange={(e) => commit(draft.map((x, j) => (j === i ? { ...x, category: e.target.value as Category } : x)))}>
-                {CATEGORIES.map((c) => (
-                  <option key={c} value={c}>
-                    {CATEGORY_LABELS[c]}
-                  </option>
-                ))}
-              </Select>
-              <Input aria-label={`Rule ${i + 1} process name`} placeholder="e.g. slack.exe" value={r.process ?? ""} onChange={(e) => patch(i, { process: e.target.value })} onBlur={() => commit(draft)} />
-              <Input aria-label={`Rule ${i + 1} title contains`} placeholder="e.g. Gmail" value={r.titleContains ?? ""} onChange={(e) => patch(i, { titleContains: e.target.value })} onBlur={() => commit(draft)} />
-              <div className="flex items-center justify-end">
-                <IconButton label={`Move rule ${i + 1} up`} disabled={i === 0} onClick={() => commit(moveItem(draft, i, i - 1))}>
-                  <ArrowUp size={15} />
-                </IconButton>
-                <IconButton label={`Move rule ${i + 1} down`} disabled={i === draft.length - 1} onClick={() => commit(moveItem(draft, i, i + 1))}>
-                  <ArrowDown size={15} />
-                </IconButton>
-                <IconButton label={`Remove rule ${i + 1}`} onClick={() => commit(draft.filter((_, j) => j !== i))}>
-                  <Trash2 size={15} />
-                </IconButton>
-              </div>
-              {isEmpty(r) && <p className="col-span-4 -mt-1 px-1 text-xs text-faint">This rule matches every app. Add a process or title.</p>}
-            </div>
-          ))}
-        </div>
+        <table className="w-full border-separate border-spacing-y-2">
+          <caption className="sr-only">Category rules, first match wins</caption>
+          <thead>
+            <tr className="text-left text-xs text-muted">
+              <th scope="col" className="w-[150px] px-1 font-normal">Category</th>
+              <th scope="col" className="px-1 font-normal">Process name</th>
+              <th scope="col" className="px-1 font-normal">Title contains</th>
+              <th scope="col" className="w-[96px]"><span className="sr-only">Actions</span></th>
+            </tr>
+          </thead>
+          <tbody>
+            {draft.map((r, i) => (
+              <tr key={i}>
+                <td className="pr-2 align-top">
+                  <Select aria-label={`Rule ${i + 1} category`} value={r.category} onChange={(e) => commit(draft.map((x, j) => (j === i ? { ...x, category: e.target.value as Category } : x)))}>
+                    {CATEGORIES.map((c) => (
+                      <option key={c} value={c}>
+                        {CATEGORY_LABELS[c]}
+                      </option>
+                    ))}
+                  </Select>
+                </td>
+                <td className="pr-2 align-top">
+                  <Input aria-label={`Rule ${i + 1} process name`} placeholder="e.g. slack.exe" value={r.process ?? ""} onChange={(e) => patch(i, { process: e.target.value })} onBlur={() => persist(draft)} />
+                </td>
+                <td className="pr-2 align-top">
+                  <Input
+                    aria-label={`Rule ${i + 1} title contains`}
+                    placeholder="e.g. Gmail"
+                    value={r.titleContains ?? ""}
+                    onChange={(e) => patch(i, { titleContains: e.target.value })}
+                    onBlur={() => persist(draft)}
+                    helper={hasMatch(r) ? undefined : "Not saved until you add a process or title."}
+                  />
+                </td>
+                <td className="align-top">
+                  <div className="flex items-center justify-end">
+                    <IconButton label={`Move rule ${i + 1} up`} disabled={i === 0} onClick={() => commit(moveItem(draft, i, i - 1))}>
+                      <ArrowUp size={15} />
+                    </IconButton>
+                    <IconButton label={`Move rule ${i + 1} down`} disabled={i === draft.length - 1} onClick={() => commit(moveItem(draft, i, i + 1))}>
+                      <ArrowDown size={15} />
+                    </IconButton>
+                    <IconButton label={`Remove rule ${i + 1}`} onClick={() => commit(draft.filter((_, j) => j !== i))}>
+                      <Trash2 size={15} />
+                    </IconButton>
+                  </div>
+                </td>
+              </tr>
+            ))}
+          </tbody>
+        </table>
       )}
       <div className="mt-3">
-        <Button size="sm" icon={<Plus size={14} />} onClick={() => commit([...draft, { category: "other" }])}>
+        <Button size="sm" icon={<Plus size={14} />} onClick={() => setDraft([...draft, { category: "other" }])}>
           Add rule
         </Button>
       </div>

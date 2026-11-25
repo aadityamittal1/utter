@@ -1,52 +1,47 @@
-import { useCallback, useEffect, useState } from "react";
+import { useCallback, useEffect, useRef, useState } from "react";
 import { Check, Download, Trash2, X } from "lucide-react";
 import { Button, Select, SettingRow, SkeletonRows, Switch } from "../../components/ui";
 import { ipc } from "../../lib/ipc";
 import { formatBytes } from "../../lib/format";
-import { useBackendEvent } from "../../lib/useBackendEvent";
-import type { ModelProgress, ModelStatus } from "../../lib/types";
+import type { ModelStatus } from "../../lib/types";
 import { LANGUAGES, modelTraits, without } from "./helpers";
+import { beginDownload, clearDownloadError, failDownload, markCancelled, useDownloads } from "./downloads";
 import { Badge, Section, WithSettings } from "./parts";
 
 export default function Models() {
   const [models, setModels] = useState<ModelStatus[] | null>(null);
   const [loadError, setLoadError] = useState<string | null>(null);
-  const [progress, setProgress] = useState<Record<string, ModelProgress>>({});
-  const [errors, setErrors] = useState<Record<string, string>>({});
   const [busy, setBusy] = useState<string | null>(null);
+  const [localErrors, setLocalErrors] = useState<Record<string, string>>({});
+  const { progress, errors: dlErrors, doneTick } = useDownloads();
+  const errors = { ...dlErrors, ...localErrors };
+  const seq = useRef(0);
 
+  /** Latest call wins, so a slow earlier refresh can't overwrite newer data. */
   const refresh = useCallback(async () => {
+    const mine = ++seq.current;
     try {
-      setModels(await ipc.listModels());
+      const list = await ipc.listModels();
+      if (mine !== seq.current) return;
+      setModels(list);
       setLoadError(null);
     } catch (e) {
-      setLoadError(String(e));
+      if (mine === seq.current) setLoadError(String(e));
     }
   }, []);
   useEffect(() => {
     void refresh();
-  }, [refresh]);
-
-  useBackendEvent("model://progress", (p) => {
-    if (p.error) {
-      setErrors((e) => ({ ...e, [p.id]: p.error! }));
-      setProgress((c) => without(c, p.id));
-    } else if (p.done) {
-      setProgress((c) => without(c, p.id));
-      void refresh();
-    } else {
-      setProgress((cur) => ({ ...cur, [p.id]: p }));
-    }
-  });
+  }, [refresh, doneTick]);
 
   const run = async (id: string, fn: () => Promise<void>) => {
     setBusy(id);
-    setErrors((c) => without(c, id));
+    setLocalErrors((c) => without(c, id));
+    clearDownloadError(id);
     try {
       await fn();
       await refresh();
     } catch (e) {
-      setErrors((cur) => ({ ...cur, [id]: String(e) }));
+      setLocalErrors((cur) => ({ ...cur, [id]: String(e) }));
     } finally {
       setBusy(null);
     }
@@ -54,18 +49,17 @@ export default function Models() {
 
   const download = (id: string) =>
     run(id, async () => {
-      setProgress((c) => ({ ...c, [id]: { id, downloaded: 0, total: 0, done: false } }));
+      beginDownload(id);
       try {
         await ipc.downloadModel(id);
       } catch (e) {
-        setProgress((c) => without(c, id));
-        throw e;
+        failDownload(id, String(e));
       }
     });
   const cancel = (id: string) =>
     run(id, async () => {
+      markCancelled(id);
       await ipc.cancelDownload(id);
-      setProgress((c) => without(c, id));
     });
 
   return (

@@ -36,6 +36,22 @@ export default function AI() {
       .catch(() => setUsage(null));
   }, []);
 
+  const refreshUsage = () =>
+    ipc
+      .usageGet()
+      .then(setUsage)
+      .catch(() => undefined);
+
+  const runTest = async (prefix = "") => {
+    try {
+      await ipc.testApiKey();
+      setResult({ ok: true });
+    } catch (e) {
+      setResult({ ok: false, message: `${prefix}${String(e)}` });
+    }
+    void refreshUsage();
+  };
+
   const save = async () => {
     const key = draft.trim();
     if (!key) return;
@@ -43,31 +59,27 @@ export default function AI() {
     setResult(null);
     try {
       await ipc.setApiKey(key);
-      setDraft("");
-      setStatus(await ipc.apiKeyStatus());
     } catch (e) {
-      setResult({ ok: false, message: String(e) });
+      setDraft(""); // never keep the key text around after a failed save
+      setResult({ ok: false, message: `Couldn't save the key: ${String(e)}` });
       setSaving(false);
       return;
     }
+    setDraft("");
+    // From here the key IS saved. Later failures must not say otherwise.
     try {
-      await ipc.testApiKey();
-      setResult({ ok: true });
-    } catch (e) {
-      setResult({ ok: false, message: `Saved, but the key didn't work: ${String(e)}` });
+      setStatus(await ipc.apiKeyStatus());
+    } catch {
+      setStatus({ set: true });
     }
+    await runTest("Key saved, but it didn't work: ");
     setSaving(false);
   };
 
   const test = async () => {
     setTesting(true);
     setResult(null);
-    try {
-      await ipc.testApiKey();
-      setResult({ ok: true });
-    } catch (e) {
-      setResult({ ok: false, message: String(e) });
-    }
+    await runTest();
     setTesting(false);
   };
 

@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import { cleanRule, conflictsFor, findConflicts, modelTraits, moveItem, removeBinding, setBinding } from "./helpers";
+import { normalizeChord, cleanRule, conflictsFor, findConflicts, modelTraits, moveItem, removeBinding, setBinding } from "./helpers";
 
 describe("shortcut helpers", () => {
   it("finds chords bound twice, ignoring case", () => {
@@ -19,6 +19,16 @@ describe("shortcut helpers", () => {
     s = setBinding(s, "dictate", 1, "C");
     expect(s.dictate).toEqual(["B", "C"]);
     expect(removeBinding(s, "dictate", 0).dictate).toEqual(["C"]);
+  });
+});
+
+describe("normalizeChord", () => {
+  it("canonicalizes order and aliases", () => {
+    expect(normalizeChord("Shift+Meta+Control")).toBe("ctrl+win+shift");
+    expect(normalizeChord("Alt+Super+Space")).toBe("win+alt+space");
+  });
+  it("detects conflicts across spellings", () => {
+    expect(findConflicts({ dictate: ["Win+Ctrl"], command: ["Ctrl+Meta"] })).toHaveLength(1);
   });
 });
 
