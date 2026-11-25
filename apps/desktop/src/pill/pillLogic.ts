@@ -29,13 +29,20 @@ export function formatRemaining(elapsedMs: number): string {
   return `${formatTimer(Math.max(0, MAX_RECORDING_MS - elapsedMs))} left`;
 }
 
-/** Fast attack, slower release, so bars jump with speech and settle calmly. */
-export function smoothLevels(prev: readonly number[], target: readonly number[], attack = 0.6, release = 0.2): number[] {
+/** Per-frame coefficient equivalent to coefficient k applied every 40 ms. */
+export function frameCoef(k: number, dtMs: number): number {
+  const dt = Number.isFinite(dtMs) ? Math.min(100, Math.max(0, dtMs)) : 40;
+  return 1 - Math.pow(1 - k, dt / 40);
+}
+
+/** Fast attack, slower release, so bars jump with speech and settle calmly. The single smoothing stage. */
+export function smoothLevels(prev: readonly number[], target: readonly number[], dtMs = 40, attack = 0.6, release = 0.2): number[] {
+  const a = frameCoef(attack, dtMs);
+  const r = frameCoef(release, dtMs);
   return Array.from({ length: BAR_COUNT }, (_, i) => {
     const p = clamp01(prev[i] ?? 0);
     const t = clamp01(target[i] ?? 0);
-    const k = t > p ? attack : release;
-    const v = p + (t - p) * k;
+    const v = p + (t - p) * (t > p ? a : r);
     return v < 0.002 ? 0 : v;
   });
 }
@@ -52,6 +59,16 @@ export const BAR_MAX_PX = 22;
 export function barHeight(level: number, i: number): number {
   const shaped = Math.pow(clamp01(level), 0.7) * envelope(i);
   return Math.round((BAR_MIN_PX + (BAR_MAX_PX - BAR_MIN_PX) * shaped) * 10) / 10;
+}
+
+/** Bar elements are BAR_MAX_PX tall and scaled with transform (no layout per frame). */
+export function barScale(level: number, i: number): number {
+  return Math.round((barHeight(level, i) / BAR_MAX_PX) * 1000) / 1000;
+}
+
+/** Timer shown: the backend value, but never behind a local clock anchored at the first listening event. */
+export function effectiveElapsed(eventMs: number, localMs: number): number {
+  return Math.max(Number.isFinite(eventMs) ? eventMs : 0, Number.isFinite(localMs) ? localMs : 0);
 }
 
 /** Fixed profile for prefers-reduced-motion. */
@@ -97,7 +114,7 @@ export function capsuleSize(view: PillView, message?: string): Size {
       return { w: clamp(Math.round(112 + len * CHAR_PX), 200, 340), h: 40 };
     }
     case "menu":
-      return { w: 336, h: 40 };
+      return { w: 348, h: 40 };
   }
 }
 

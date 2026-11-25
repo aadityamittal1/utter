@@ -1,12 +1,13 @@
 // Dev-only harness (pill.html?pill-harness): shows every pill state, including the
 // ones the mock demo never reaches (19-minute warning, long error, menu).
 // Not shipped: pill.tsx only imports it when import.meta.env.DEV is true.
-import { useEffect, useState } from "react";
+import { useEffect, useRef, useState, type RefObject } from "react";
 import type { PillState } from "../lib/types";
 import { PillView, usePrefersReducedMotion } from "./Pill";
 import { BAR_COUNT } from "./pillLogic";
 import "./pill.css";
 
+const silent: RefObject<readonly number[]> = { current: [] };
 const base = { mode: "dictate" };
 const CASES: { label: string; state: PillState; menu?: boolean; live?: boolean }[] = [
   { label: "idle", state: { ...base, state: "idle", elapsedMs: 0 } },
@@ -23,21 +24,20 @@ const CASES: { label: string; state: PillState; menu?: boolean; live?: boolean }
   { label: "menu", state: { ...base, state: "idle", elapsedMs: 0 }, menu: true },
 ];
 
-function useFakeLevels(on: boolean): number[] {
-  const [levels, setLevels] = useState<number[]>(() => new Array(BAR_COUNT).fill(0));
+function useFakeLevels(): RefObject<readonly number[]> {
+  const ref = useRef<readonly number[]>(new Array(BAR_COUNT).fill(0));
   useEffect(() => {
-    if (!on) return;
     const id = setInterval(() => {
       const t = Date.now() / 220;
-      setLevels(Array.from({ length: BAR_COUNT }, (_, i) => Math.max(0.05, Math.min(1, 0.45 + Math.sin(t + i * 0.7) * 0.3 + Math.sin(t * 2.3 + i) * 0.15))));
+      ref.current = Array.from({ length: BAR_COUNT }, (_, i) => Math.max(0.05, Math.min(1, 0.45 + Math.sin(t + i * 0.7) * 0.3 + Math.sin(t * 2.3 + i) * 0.15)));
     }, 60);
     return () => clearInterval(id);
-  }, [on]);
-  return levels;
+  }, []);
+  return ref;
 }
 
 export function Harness() {
-  const levels = useFakeLevels(true);
+  const levels = useFakeLevels();
   const reduced = usePrefersReducedMotion();
   const [dark, setDark] = useState(true);
   return (
@@ -50,7 +50,7 @@ export function Harness() {
           <div key={c.label}>
             <div style={{ fontSize: 11, opacity: 0.7, marginBottom: 4 }}>{c.label}</div>
             <div style={{ position: "relative", width: 360, height: 72, outline: "1px dashed rgb(128 128 128 / 0.5)", display: "flex", alignItems: "center", justifyContent: "center" }}>
-              <PillView state={c.state} levels={c.live ? levels : []} menuOpen={c.menu} reduced={reduced} onAction={(a) => console.log("pill action", a)} />
+              <PillView state={c.state} levelsRef={c.live ? levels : silent} menuOpen={c.menu} reduced={reduced} onAction={(a) => console.log("pill action", a)} />
             </div>
           </div>
         ))}

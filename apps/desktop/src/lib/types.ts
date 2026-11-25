@@ -147,7 +147,7 @@ export interface ModelProgress {
   error?: string;
 }
 
-export type PillAction = "stop" | "cancel" | "retry" | "hide1h" | "openHub";
+export type PillAction = "stop" | "cancel" | "retry" | "hide1h" | "openHub" | "openSettings";
 
 export interface EventMap {
   "pill://state": PillState;

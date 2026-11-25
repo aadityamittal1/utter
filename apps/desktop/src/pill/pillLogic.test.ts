@@ -4,6 +4,9 @@ import {
   BAR_MAX_PX,
   BAR_MIN_PX,
   barHeight,
+  barScale,
+  effectiveElapsed,
+  frameCoef,
   capsuleSize,
   formatRemaining,
   formatTimer,
@@ -95,5 +98,40 @@ describe("capsuleSize", () => {
   it("fits the 360 px window for long messages", () => {
     expect(capsuleSize("error", "x".repeat(200)).w).toBeLessThanOrEqual(340);
     expect(capsuleSize("done", "x".repeat(200)).w).toBeLessThanOrEqual(260);
+  });
+});
+
+describe("frame-rate independent smoothing", () => {
+  it("frameCoef equals k at 40 ms and compounds across frames", () => {
+    expect(frameCoef(0.6, 40)).toBeCloseTo(0.6);
+    const twoFrames = 1 - (1 - frameCoef(0.6, 20)) ** 2;
+    expect(twoFrames).toBeCloseTo(0.6);
+    expect(frameCoef(0.6, 0)).toBe(0);
+  });
+  it("smoothLevels with the same total time lands in the same place", () => {
+    const target = new Array(12).fill(1);
+    const one = smoothLevels(new Array(12).fill(0), target, 40)[0];
+    let two = new Array(12).fill(0);
+    two = smoothLevels(two, target, 20);
+    two = smoothLevels(two, target, 20);
+    expect(two[0]).toBeCloseTo(one);
+  });
+});
+
+describe("barScale", () => {
+  it("is height over the fixed element height, within (0, 1]", () => {
+    for (let i = 0; i < BAR_COUNT; i++) {
+      expect(barScale(0, i)).toBeGreaterThan(0);
+      expect(barScale(1, i)).toBeLessThanOrEqual(1);
+    }
+    expect(barScale(1, 6)).toBeGreaterThan(barScale(0.2, 6));
+  });
+});
+
+describe("effectiveElapsed", () => {
+  it("never runs behind the local clock", () => {
+    expect(effectiveElapsed(1000, 4000)).toBe(4000);
+    expect(effectiveElapsed(5000, 4000)).toBe(5000);
+    expect(effectiveElapsed(Number.NaN, 300)).toBe(300);
   });
 });

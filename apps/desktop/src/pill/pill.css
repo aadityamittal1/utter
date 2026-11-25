@@ -26,10 +26,10 @@ body,
   height: var(--h);
   overflow: hidden;
   border-radius: 9999px;
-  border: 1px solid #34323f;
+  border: 1px solid color-mix(in srgb, var(--paper) 14%, var(--ink));
   background: var(--ink);
   color: var(--paper);
-  box-shadow: 0 8px 20px -8px rgb(0 0 0 / 0.5);
+  box-shadow: 0 8px 20px -8px color-mix(in srgb, var(--ink) 50%, transparent);
   font-size: 12px;
   font-weight: 500;
   line-height: 1;
@@ -43,15 +43,16 @@ body,
 }
 
 .pill-capsule[data-view="idle"] {
-  background: rgb(20 19 26 / 0.35);
-  border-color: rgb(250 248 245 / 0.14);
+  background: color-mix(in srgb, var(--ink) 35%, transparent);
+  border-color: color-mix(in srgb, var(--paper) 14%, transparent);
   box-shadow: none;
 }
 
 .pill-capsule[data-view="error"] {
-  background: var(--ember-dark);
-  border-color: rgb(20 19 26 / 0.3);
+  background: color-mix(in srgb, var(--ember-dark) 70%, var(--ember));
+  border-color: color-mix(in srgb, var(--ink) 30%, transparent);
   color: var(--ink);
+  font-weight: 600;
 }
 
 .pill-content {
@@ -90,10 +91,11 @@ body,
 .pill-bar {
   display: block;
   width: 3px;
-  min-height: 3px;
+  height: 22px;
   border-radius: 2px;
   background: var(--paper);
-  transition: height 80ms ease-out;
+  transform: scaleY(0.14);
+  will-change: transform;
 }
 
 /* Recording dot */
@@ -138,7 +140,7 @@ body,
   overflow: hidden;
   text-align: right;
   font-variant-numeric: tabular-nums;
-  color: rgb(250 248 245 / 0.78);
+  color: color-mix(in srgb, var(--paper) 78%, transparent);
   transition:
     width 160ms var(--ease),
     margin 160ms var(--ease),
@@ -230,13 +232,13 @@ body,
     transform 120ms ease-out;
 }
 .pill-btn:hover {
-  background: rgb(250 248 245 / 0.14);
+  background: color-mix(in srgb, var(--paper) 14%, transparent);
 }
 .pill-btn:active {
   transform: scale(0.92);
 }
 .pill-btn[data-tone="muted"] {
-  color: rgb(250 248 245 / 0.7);
+  color: color-mix(in srgb, var(--paper) 70%, transparent);
 }
 .pill-btn[data-tone="stop"] {
   background: var(--ember);
@@ -266,7 +268,7 @@ body,
   transition: transform 120ms ease-out;
 }
 .pill-chip:hover {
-  background: #2a2833;
+  background: color-mix(in srgb, var(--paper) 10%, var(--ink));
 }
 .pill-chip:active {
   transform: scale(0.96);
@@ -292,12 +294,32 @@ body,
   transition: background-color 120ms ease-out;
 }
 .pill-menu-item:hover {
-  background: rgb(250 248 245 / 0.14);
+  background: color-mix(in srgb, var(--paper) 14%, transparent);
+}
+.pill-menu-close {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 26px;
+  height: 26px;
+  margin-left: 2px;
+  padding: 0;
+  border: 0;
+  border-radius: 9999px;
+  background: transparent;
+  color: color-mix(in srgb, var(--paper) 70%, transparent);
+}
+.pill-menu-close:hover {
+  background: color-mix(in srgb, var(--paper) 14%, transparent);
+}
+.pill-menu-close:focus-visible {
+  outline: 2px solid var(--paper);
+  outline-offset: 1px;
 }
 .pill-menu-sep {
   width: 1px;
   height: 14px;
-  background: rgb(250 248 245 / 0.16);
+  background: color-mix(in srgb, var(--paper) 16%, transparent);
 }
 
 .sr-only {
@@ -316,7 +338,6 @@ body,
   .pill-capsule,
   .pill-content,
   .pill-menu,
-  .pill-bar,
   .pill-timer,
   .pill-btn,
   .pill-chip {
