@@ -425,16 +425,39 @@ impl Worker {
                 let target = a.target;
                 // No recorded target (our own window was focused at press): paste where the
                 // user is now, with the paste method for that window.
-                let method = if target.is_none() {
-                    let proc = foreground_app().map(|x| x.process).unwrap_or_default();
-                    paste_method_for(&proc)
+                let mut copied_only = false;
+                let pasted = if target.is_some() {
+                    insert_text(&r.text, method, target)
                 } else {
-                    method
+                    // Same plan as "Paste last": our own window (e.g. the tray) may still be in
+                    // front, so hand focus back to the last external window or copy only.
+                    let fg = foreground_app();
+                    let plan = paste_last_plan(
+                        fg.as_ref(),
+                        std::process::id(),
+                        crate::windows::hub_hwnd(&st.app),
+                        *st.last_external.lock(),
+                    );
+                    let proc = match plan {
+                        PasteLastPlan::Foreground => fg.map(|x| x.process),
+                        PasteLastPlan::Refocus(h) if focus_window(h) => {
+                            std::thread::sleep(Duration::from_millis(80));
+                            foreground_app().map(|x| x.process)
+                        }
+                        _ => None,
+                    };
+                    match proc {
+                        Some(p) => insert_text(&r.text, paste_method_for(&p), None),
+                        None => {
+                            copied_only = true;
+                            Ok(())
+                        }
+                    }
                 };
-                let pasted = insert_text(&r.text, method, target);
                 if let Err(e) = &pasted {
                     log::warn!("insert failed: {e}");
                 }
+                log::debug!("session finished: mode={mode_s} action=insert");
                 *st.last.lock() = Some(LastResult {
                     text: r.text.clone(),
                 });
@@ -450,7 +473,9 @@ impl Worker {
                     r.usage.as_ref(),
                     Some(&samples),
                 );
-                if pasted.is_ok() {
+                if copied_only {
+                    self.copy_only(&r.text);
+                } else if pasted.is_ok() {
                     st.set_pill_timed(PillKind::Done, mode_s, None, 900);
                 } else {
                     self.fail(mode_s, "Couldn't paste, text is on your clipboard", 4000);
