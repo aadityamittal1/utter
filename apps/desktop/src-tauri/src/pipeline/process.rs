@@ -80,7 +80,13 @@ fn style_for(settings: &Settings, category: Category) -> StyleKind {
 
 fn prompt_ctx(inp: &TextInput<'_>) -> PromptContext {
     PromptContext {
-        app_name: inp.app_name.to_string(),
+        // With context awareness off, the foreground app's name never leaves the machine
+        // (the real name is still kept for local history).
+        app_name: if inp.settings.context_awareness {
+            inp.app_name.to_string()
+        } else {
+            String::new()
+        },
         category: inp.category,
         style: style_for(inp.settings, inp.category),
         level: inp.settings.cleanup_level,
@@ -326,6 +332,24 @@ mod tests {
             }
             other => panic!("{other:?}"),
         }
+    }
+
+    #[test]
+    fn app_name_is_not_sent_when_context_awareness_is_off() {
+        let off = Settings {
+            context_awareness: false,
+            ..Settings::default()
+        };
+        let inp = input("hello", Mode::Dictate, &off, None, None);
+        let req = cleanup_request(&prompt_ctx(&inp), "hello");
+        assert!(!req.system.contains("Notepad"), "{}", req.system);
+        let on = Settings {
+            context_awareness: true,
+            ..Settings::default()
+        };
+        let inp = input("hello", Mode::Dictate, &on, None, None);
+        let req = cleanup_request(&prompt_ctx(&inp), "hello");
+        assert!(req.system.contains("Notepad"), "{}", req.system);
     }
 
     #[tokio::test]
