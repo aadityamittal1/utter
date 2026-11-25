@@ -166,6 +166,7 @@ impl ClaudeClient {
     pub fn new(api_key: String, model: String) -> Self {
         let http = reqwest::Client::builder()
             .timeout(TIMEOUT)
+            .redirect(reqwest::redirect::Policy::none())
             .build()
             // Building only fails on TLS backend init errors, which are unrecoverable;
             // no default-client fallback, since it would silently drop the 15 s timeout.

@@ -285,7 +285,6 @@ pub fn download_model(st: St, id: String) -> CmdResult<()> {
             Ok(_) => {
                 emit_progress(&state, &id, info.size_bytes, info.size_bytes, true, None);
                 // First run: make the model that just arrived the active one.
-                let before = state.settings_snapshot().active_model;
                 let st2 = state.clone();
                 let id2 = id.clone();
                 let _ = update_settings_with(&state, |s| {
@@ -293,7 +292,8 @@ pub fn download_model(st: St, id: String) -> CmdResult<()> {
                         s.active_model = id2;
                     }
                 });
-                if state.settings_snapshot().active_model != before {
+                // Preload whenever the model that just arrived is the active one.
+                if state.settings_snapshot().active_model == id {
                     preload_engine(&state);
                 }
             }

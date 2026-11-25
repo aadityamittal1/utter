@@ -79,6 +79,10 @@ pub async fn download_model(
         }
         file.flush().await?;
         drop(file);
+        if done < total {
+            // Keep the .part so the next attempt resumes; never hash a short file.
+            bail!("download ended early ({done} of {total} bytes)");
+        }
     }
 
     let actual = hash_file(&part_path).await?;
@@ -187,6 +191,29 @@ mod tests {
             .unwrap_err();
         assert!(err.to_string().contains("checksum"), "{err}");
         assert!(!dir.path().join("ggml-t.bin.part").exists());
+        assert!(!dir.path().join("ggml-t.bin").exists());
+    }
+
+    #[tokio::test]
+    async fn short_stream_keeps_part_and_is_not_hashed() {
+        let body = vec![9u8; 4096];
+        let mut server = mockito::Server::new_async().await;
+        let _m = server
+            .mock("GET", "/m.bin")
+            .with_status(200)
+            .with_body(&body[..1000])
+            .create_async()
+            .await;
+        let info = info_for(&body, format!("{}/m.bin", server.url()), None);
+        let dir = tempfile::tempdir().unwrap();
+
+        let err = download_model(&info, dir.path(), CancellationToken::new(), |_, _| {})
+            .await
+            .unwrap_err();
+        assert!(err.to_string().contains("ended early"), "{err}");
+        assert!(!err.to_string().contains("checksum"), "{err}");
+        let part = dir.path().join("ggml-t.bin.part");
+        assert_eq!(std::fs::metadata(part).unwrap().len(), 1000);
         assert!(!dir.path().join("ggml-t.bin").exists());
     }
 }
