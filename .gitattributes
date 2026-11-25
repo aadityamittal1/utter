@@ -1,0 +1,17 @@
+# Keep LF line endings on every platform (rustfmt.toml uses newline_style = "Unix",
+# and Windows CI runners would otherwise check files out as CRLF).
+* text=auto eol=lf
+
+# Windows-only scripts keep CRLF.
+*.ps1 text eol=crlf
+*.bat text eol=crlf
+*.cmd text eol=crlf
+
+# Binary assets.
+*.png binary
+*.ico binary
+*.icns binary
+*.wav binary
+*.bin binary
+*.woff binary
+*.woff2 binary
