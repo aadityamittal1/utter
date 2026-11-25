@@ -1,4 +1,4 @@
-﻿//! Whisper model catalog: the models Utter can download, with pinned sizes and hashes.
+//! Whisper model catalog: the models Utter can download, with pinned sizes and hashes.
 
 use std::path::{Path, PathBuf};
 
@@ -36,7 +36,8 @@ static CATALOG: &[ModelInfo] = &[
         id: "large-v3-turbo-q5_0",
         label: "Large v3 Turbo (most accurate)",
         file: "ggml-large-v3-turbo-q5_0.bin",
-        url: "https://huggingface.co/ggerganov/whisper.cpp/resolve/main/ggml-large-v3-turbo-q5_0.bin",
+        url:
+            "https://huggingface.co/ggerganov/whisper.cpp/resolve/main/ggml-large-v3-turbo-q5_0.bin",
         size_bytes: 574_041_195,
         sha256: "394221709cd5ad1f40c46e6031ca61bce88931e6e088c188294c6d5a55ffa7e2",
         multilingual: true,
@@ -55,7 +56,11 @@ pub fn default_model_id() -> &'static str {
 }
 
 pub fn model_path(models_dir: &Path, id: &str) -> PathBuf {
-    let file = catalog().iter().find(|m| m.id == id).map(|m| m.file).unwrap_or(id);
+    let file = catalog()
+        .iter()
+        .find(|m| m.id == id)
+        .map(|m| m.file)
+        .unwrap_or(id);
     models_dir.join(file)
 }
 
@@ -85,5 +90,3 @@ mod tests {
         assert!(p.ends_with("ggml-base.bin"));
     }
 }
-
-

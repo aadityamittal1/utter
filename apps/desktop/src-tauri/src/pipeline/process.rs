@@ -350,7 +350,11 @@ mod tests {
         match out {
             TextOutcome::Text(r) => {
                 assert!(!r.used_ai);
-                assert!(r.text.to_lowercase().contains("capital of france"), "{}", r.text);
+                assert!(
+                    r.text.to_lowercase().contains("capital of france"),
+                    "{}",
+                    r.text
+                );
                 assert!(!r.text.contains("Paris"));
             }
             other => panic!("{other:?}"),
@@ -412,7 +416,9 @@ mod tests {
         let mut inp = input("My email.", Mode::Dictate, &s, Some("sk-test"), None);
         inp.snippets = &snips;
         match run_text_stage(&inp).await {
-            TextOutcome::Text(r) => assert_eq!((r.text.as_str(), r.used_ai), ("me@example.com", false)),
+            TextOutcome::Text(r) => {
+                assert_eq!((r.text.as_str(), r.used_ai), ("me@example.com", false))
+            }
             other => panic!("{other:?}"),
         }
     }

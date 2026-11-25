@@ -24,7 +24,10 @@ use std::time::{Duration, Instant};
 const MIN_RECORDING_MS: u64 = 400;
 const MAX_RECORDING: Duration = Duration::from_secs(20 * 60);
 const WARN_AT: Duration = Duration::from_secs(19 * 60);
-const TICK: Duration = Duration::from_millis(250);
+const TICK: Duration = Duration::from_millis(50);
+/// The start sound and listening pill appear only once a recording has lasted this long, so a
+/// replayed instant press+release (discarded as too short) never flickers or beeps.
+const SHOW_AFTER: Duration = Duration::from_millis(150);
 
 #[derive(Debug, Clone)]
 pub enum SessionMsg {
@@ -42,6 +45,9 @@ struct Active {
     started: Instant,
     warned: bool,
     last_tick: Instant,
+    locked: bool,
+    /// The start sound has played and the listening/locked pill is showing.
+    shown: bool,
 }
 
 pub fn mode_str(m: Mode) -> &'static str {
@@ -65,7 +71,10 @@ pub fn spawn(st: Arc<AppState>, rx: Receiver<SessionMsg>) {
     let res = std::thread::Builder::new()
         .name("utter-session".into())
         .spawn(move || {
-            let rt = match tokio::runtime::Builder::new_current_thread().enable_all().build() {
+            let rt = match tokio::runtime::Builder::new_current_thread()
+                .enable_all()
+                .build()
+            {
                 Ok(rt) => rt,
                 Err(e) => {
                     log::error!("session runtime failed: {e}");
@@ -137,8 +146,9 @@ impl Worker {
     fn is_start(&self, ev: &HotkeyEvent) -> bool {
         matches!(
             ev,
-            HotkeyEvent::Pressed(Action::Dictate | Action::DictateEnhance | Action::Command | Action::HandsFree)
-                | HotkeyEvent::DoubleTap(Action::Dictate)
+            HotkeyEvent::Pressed(
+                Action::Dictate | Action::DictateEnhance | Action::Command | Action::HandsFree
+            ) | HotkeyEvent::DoubleTap(Action::Dictate)
         )
     }
 
@@ -172,7 +182,10 @@ impl Worker {
                 }
             }
             Some(Cmd::Lock) => {
-                if let Some(a) = &self.active {
+                if let Some(a) = self.active.as_mut() {
+                    a.locked = true;
+                }
+                if let Some(a) = self.active.as_ref().filter(|a| a.shown) {
                     self.st.set_pill(
                         PillKind::Locked,
                         mode_str(a.mode),
@@ -194,13 +207,33 @@ impl Worker {
     }
 
     fn tick(&mut self) {
-        let Some(a) = self.active.as_mut() else { return };
+        let Some(a) = self.active.as_mut() else {
+            return;
+        };
         let elapsed = a.started.elapsed();
         if elapsed >= MAX_RECORDING {
             self.apply(&Input::MaxDuration);
             return;
         }
-        if a.last_tick.elapsed() >= Duration::from_millis(500) {
+        if !a.shown && elapsed >= SHOW_AFTER {
+            a.shown = true;
+            let (mode, locked) = (a.mode, a.locked);
+            if self.st.settings.read().sounds {
+                sounds::play(Sound::Start);
+            }
+            self.st.set_pill(
+                if locked {
+                    PillKind::Locked
+                } else {
+                    PillKind::Listening
+                },
+                mode_str(mode),
+                elapsed.as_millis() as u64,
+                None,
+            );
+            return;
+        }
+        if a.shown && a.last_tick.elapsed() >= Duration::from_millis(500) {
             a.last_tick = Instant::now();
             let msg = if elapsed >= WARN_AT && !a.warned {
                 a.warned = true;
@@ -248,15 +281,6 @@ impl Worker {
         };
         st.set_session_active(true);
         self.set_recording(true);
-        if settings.sounds {
-            sounds::play(Sound::Start);
-        }
-        st.set_pill(
-            if locked { PillKind::Locked } else { PillKind::Listening },
-            mode_str(mode),
-            0,
-            None,
-        );
         self.active = Some(Active {
             recorder,
             mode,
@@ -266,6 +290,8 @@ impl Worker {
             started: Instant::now(),
             warned: false,
             last_tick: Instant::now(),
+            locked,
+            shown: false,
         });
         true
     }
@@ -281,7 +307,9 @@ impl Worker {
 
     fn finish(&mut self) {
         self.set_recording(false);
-        let Some(active) = self.active.take() else { return };
+        let Some(active) = self.active.take() else {
+            return;
+        };
         let st = self.st.clone();
         let samples = active.recorder.stop();
         st.set_session_active(false);
@@ -386,7 +414,9 @@ impl Worker {
                 if let Err(e) = &pasted {
                     log::warn!("insert failed: {e}");
                 }
-                *st.last.lock() = Some(LastResult { text: r.text.clone() });
+                *st.last.lock() = Some(LastResult {
+                    text: r.text.clone(),
+                });
                 *st.last_failed.lock() = None;
                 self.record(
                     &a.app_name,
@@ -545,9 +575,13 @@ impl Worker {
         };
         st.set_pill(PillKind::Thinking, "transform", 0, None);
         let settings = st.settings_snapshot();
-        let res = self
-            .rt
-            .block_on(run_transform(&settings, &key, None, &t.instruction, &selection));
+        let res = self.rt.block_on(run_transform(
+            &settings,
+            &key,
+            None,
+            &t.instruction,
+            &selection,
+        ));
         let Some((out, usage)) = res else {
             self.fail("transform", "Couldn't run that transform", 3500);
             return;
@@ -577,7 +611,11 @@ impl Worker {
         if pasted.is_ok() {
             st.set_pill_timed(PillKind::Done, "transform", None, 900);
         } else {
-            self.fail("transform", "Couldn't paste, text is on your clipboard", 4000);
+            self.fail(
+                "transform",
+                "Couldn't paste, text is on your clipboard",
+                4000,
+            );
         }
     }
 }

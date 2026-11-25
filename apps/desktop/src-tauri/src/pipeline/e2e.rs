@@ -83,12 +83,21 @@ fn select_all() {
         Anonymous: INPUT_0 {
             ki: KEYBDINPUT {
                 wVk: VIRTUAL_KEY(vk),
-                dwFlags: if up { KEYEVENTF_KEYUP } else { Default::default() },
+                dwFlags: if up {
+                    KEYEVENTF_KEYUP
+                } else {
+                    Default::default()
+                },
                 ..Default::default()
             },
         },
     };
-    let inputs = [key(0x11, false), key(0x41, false), key(0x41, true), key(0x11, true)];
+    let inputs = [
+        key(0x11, false),
+        key(0x41, false),
+        key(0x41, true),
+        key(0x11, true),
+    ];
     // SAFETY: well-formed INPUT array.
     unsafe {
         SendInput(&inputs, std::mem::size_of::<INPUT>() as i32);
@@ -141,17 +150,16 @@ fn has_word(text: &str, word: &str) -> bool {
 #[test]
 #[ignore = "launches Notepad and drives the real keyboard/clipboard; needs a Whisper model"]
 fn wav_to_notepad() {
-    assert!(
-        find_notepads().is_empty(),
-        "close all Notepad windows before running this test"
-    );
-
     // 1. Audio -> text through the same functions the session worker uses.
     let wav = Path::new(env!("CARGO_MANIFEST_DIR")).join("tests/fixtures/ten_seconds.wav");
     let samples = read_wav_16k(&wav).expect("read fixture");
     assert!(!is_silent_audio(&samples));
     let model = model_path();
-    assert!(model.exists(), "no Whisper model at {} (set UTTER_TEST_MODEL)", model.display());
+    assert!(
+        model.exists(),
+        "no Whisper model at {} (set UTTER_TEST_MODEL)",
+        model.display()
+    );
     let engine = WhisperEngine::load(&model).expect("load model");
     let settings = Settings::default();
     let raw = transcribe(&engine, &samples, &settings, &[]).expect("transcribe");
@@ -181,9 +189,16 @@ fn wav_to_notepad() {
         }
     };
     let local = run(None);
-    let claude = std::env::var("UTTER_TEST_API_KEY").ok().map(|k| run(Some(&k)));
+    let claude = std::env::var("UTTER_TEST_API_KEY")
+        .ok()
+        .map(|k| run(Some(&k)));
 
-    // 2. Launch our own Notepad on a temp file.
+    // 2. Launch our own Notepad on a temp file. Checked here, right before launching, so a
+    // Notepad opened during the (slow) transcription is also refused.
+    assert!(
+        find_notepads().is_empty(),
+        "close all Notepad windows before running this test"
+    );
     let clipboard = ClipboardSnapshot::take();
     let name = "utter_pipeline_e2e";
     // Unique per run: Notepad restores unsaved tabs by path and shows a modal "Keep unsaved
@@ -198,7 +213,12 @@ fn wav_to_notepad() {
         .arg(&tmp)
         .spawn()
         .expect("spawn notepad");
-    let mut guard = Cleanup { pid: None, child, tmp, clipboard };
+    let mut guard = Cleanup {
+        pid: None,
+        child,
+        tmp,
+        clipboard,
+    };
 
     // Adopt ONLY a window whose title carries this run's unique file name; a Notepad the user
     // opens while we launch must never be adopted (and later killed by the Drop guard).
@@ -213,7 +233,11 @@ fn wav_to_notepad() {
             break;
         }
     }
-    assert_eq!(ours.len(), 1, "expected exactly one of our Notepad windows, got {ours:?}");
+    assert_eq!(
+        ours.len(),
+        1,
+        "expected exactly one of our Notepad windows, got {ours:?}"
+    );
     let (hwnd, pid) = ours[0];
     guard.pid = Some(pid);
     std::thread::sleep(Duration::from_millis(800));

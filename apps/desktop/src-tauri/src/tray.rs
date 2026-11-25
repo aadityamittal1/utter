@@ -54,7 +54,11 @@ fn icon(recording: bool, paused: bool) -> Option<Image<'static>> {
     let bytes = if recording {
         RECORDING
     } else if paused {
-        if light { PAUSED } else { PAUSED_DARK }
+        if light {
+            PAUSED
+        } else {
+            PAUSED_DARK
+        }
     } else if light {
         IDLE
     } else {
@@ -72,7 +76,13 @@ pub fn sync_icon(app: &AppHandle, recording: bool, paused: bool) {
 
 pub fn create(app: &AppHandle) -> tauri::Result<()> {
     let open = MenuItem::with_id(app, "open", "Open Utter", true, None::<&str>)?;
-    let dictate = MenuItem::with_id(app, "dictate", "Start dictation (hands-free)", true, None::<&str>)?;
+    let dictate = MenuItem::with_id(
+        app,
+        "dictate",
+        "Start dictation (hands-free)",
+        true,
+        None::<&str>,
+    )?;
     let paste = MenuItem::with_id(app, "paste", "Paste last", true, None::<&str>)?;
     let pause = MenuItem::with_id(app, "pause", "Pause Utter for 1 hour", true, None::<&str>)?;
     let settings = MenuItem::with_id(app, "settings", "Settings", true, None::<&str>)?;
@@ -81,7 +91,9 @@ pub fn create(app: &AppHandle) -> tauri::Result<()> {
     let sep2 = PredefinedMenuItem::separator(app)?;
     let menu = Menu::with_items(
         app,
-        &[&open, &dictate, &paste, &sep1, &pause, &settings, &sep2, &quit],
+        &[
+            &open, &dictate, &paste, &sep1, &pause, &settings, &sep2, &quit,
+        ],
     )?;
     app.manage(PauseItem(pause));
 
@@ -133,9 +145,11 @@ fn on_menu(app: &AppHandle, id: &str) {
 
 fn set_pause_label(app: &AppHandle, paused: bool) {
     if let Some(p) = app.try_state::<PauseItem>() {
-        let _ = p
-            .0
-            .set_text(if paused { "Resume Utter" } else { "Pause Utter for 1 hour" });
+        let _ = p.0.set_text(if paused {
+            "Resume Utter"
+        } else {
+            "Pause Utter for 1 hour"
+        });
     }
 }
 

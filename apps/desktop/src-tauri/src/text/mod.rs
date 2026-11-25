@@ -1,8 +1,8 @@
 //! text module.
 
-pub mod types;
-pub mod local_cleanup;
-pub mod style;
-pub mod dictionary;
-pub mod snippets;
 pub mod artifacts;
+pub mod dictionary;
+pub mod local_cleanup;
+pub mod snippets;
+pub mod style;
+pub mod types;

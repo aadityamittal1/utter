@@ -1,4 +1,4 @@
-﻿//! Resumable, hash-verified model downloader.
+//! Resumable, hash-verified model downloader.
 
 use std::path::{Path, PathBuf};
 
@@ -20,12 +20,17 @@ pub async fn download_model(
     cancel: CancellationToken,
     progress: impl Fn(u64, u64) + Send,
 ) -> Result<PathBuf> {
-    tokio::fs::create_dir_all(dir).await.context("create models dir")?;
+    tokio::fs::create_dir_all(dir)
+        .await
+        .context("create models dir")?;
     let final_path = dir.join(info.file);
     let part_path = dir.join(format!("{}.part", info.file));
     let total = info.size_bytes;
 
-    let mut have = tokio::fs::metadata(&part_path).await.map(|m| m.len()).unwrap_or(0);
+    let mut have = tokio::fs::metadata(&part_path)
+        .await
+        .map(|m| m.len())
+        .unwrap_or(0);
     if have > total {
         let _ = tokio::fs::remove_file(&part_path).await;
         have = 0;
@@ -40,7 +45,10 @@ pub async fn download_model(
         let resp = req.send().await.context("request model")?;
         let status = resp.status();
         let mut file = if status == reqwest::StatusCode::PARTIAL_CONTENT && have > 0 {
-            tokio::fs::OpenOptions::new().append(true).open(&part_path).await?
+            tokio::fs::OpenOptions::new()
+                .append(true)
+                .open(&part_path)
+                .await?
         } else if status.is_success() {
             // Server ignored the range (or fresh start): restart from zero.
             have = 0;
@@ -76,9 +84,14 @@ pub async fn download_model(
     let actual = hash_file(&part_path).await?;
     if !actual.eq_ignore_ascii_case(info.sha256) {
         let _ = tokio::fs::remove_file(&part_path).await;
-        return Err(anyhow!("checksum mismatch for {} (got {actual})", info.file));
+        return Err(anyhow!(
+            "checksum mismatch for {} (got {actual})",
+            info.file
+        ));
     }
-    tokio::fs::rename(&part_path, &final_path).await.context("finalize model file")?;
+    tokio::fs::rename(&part_path, &final_path)
+        .await
+        .context("finalize model file")?;
     Ok(final_path)
 }
 
@@ -156,8 +169,17 @@ mod tests {
     async fn download_rejects_bad_hash() {
         let body = vec![7u8; 2048];
         let mut server = mockito::Server::new_async().await;
-        let _m = server.mock("GET", "/m.bin").with_status(200).with_body(&body).create_async().await;
-        let info = info_for(&body, format!("{}/m.bin", server.url()), Some("0".repeat(64)));
+        let _m = server
+            .mock("GET", "/m.bin")
+            .with_status(200)
+            .with_body(&body)
+            .create_async()
+            .await;
+        let info = info_for(
+            &body,
+            format!("{}/m.bin", server.url()),
+            Some("0".repeat(64)),
+        );
         let dir = tempfile::tempdir().unwrap();
 
         let err = download_model(&info, dir.path(), CancellationToken::new(), |_, _| {})

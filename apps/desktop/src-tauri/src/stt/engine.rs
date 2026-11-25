@@ -1,11 +1,9 @@
-﻿//! Local speech-to-text via whisper.cpp (whisper-rs). Audio never leaves the machine.
+//! Local speech-to-text via whisper.cpp (whisper-rs). Audio never leaves the machine.
 
 use std::path::Path;
 
 use anyhow::{anyhow, Context, Result};
-use whisper_rs::{
-    FullParams, SamplingStrategy, WhisperContext, WhisperContextParameters,
-};
+use whisper_rs::{FullParams, SamplingStrategy, WhisperContext, WhisperContextParameters};
 
 #[derive(Debug, Clone, Default)]
 pub struct SttOptions {
@@ -25,10 +23,16 @@ pub struct WhisperEngine {
 /// emulation, 6+ threads made whisper.cpp 50x+ slower (spin-wait contention), while 4
 /// was fastest. `UTTER_THREADS` overrides this for benchmarking.
 fn thread_count() -> i32 {
-    if let Some(n) = std::env::var("UTTER_THREADS").ok().and_then(|v| v.parse::<i32>().ok()) {
+    if let Some(n) = std::env::var("UTTER_THREADS")
+        .ok()
+        .and_then(|v| v.parse::<i32>().ok())
+    {
         return n.max(1);
     }
-    std::thread::available_parallelism().map(|n| n.get()).unwrap_or(4).min(4) as i32
+    std::thread::available_parallelism()
+        .map(|n| n.get())
+        .unwrap_or(4)
+        .min(4) as i32
 }
 
 impl WhisperEngine {
@@ -57,7 +61,9 @@ impl WhisperEngine {
         if !opts.initial_prompt.trim().is_empty() {
             params.set_initial_prompt(&opts.initial_prompt);
         }
-        state.full(params, samples_16k_mono).context("whisper inference")?;
+        state
+            .full(params, samples_16k_mono)
+            .context("whisper inference")?;
 
         let mut out = String::new();
         for i in 0..state.full_n_segments() {

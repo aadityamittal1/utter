@@ -1,4 +1,4 @@
-﻿//! Benchmark: cargo run --release --example bench -- <model.bin> <wav>
+//! Benchmark: cargo run --release --example bench -- <model.bin> <wav>
 use std::time::Instant;
 
 use utter_lib::stt::engine::{SttOptions, WhisperEngine};
@@ -6,8 +6,14 @@ use utter_lib::stt::engine::{SttOptions, WhisperEngine};
 fn read_wav(path: &str) -> Vec<f32> {
     let mut r = hound::WavReader::open(path).expect("open wav");
     let spec = r.spec();
-    assert_eq!((spec.sample_rate, spec.channels), (16_000, 1), "need 16 kHz mono");
-    r.samples::<i16>().map(|s| s.unwrap() as f32 / 32768.0).collect()
+    assert_eq!(
+        (spec.sample_rate, spec.channels),
+        (16_000, 1),
+        "need 16 kHz mono"
+    );
+    r.samples::<i16>()
+        .map(|s| s.unwrap() as f32 / 32768.0)
+        .collect()
 }
 
 fn main() {
@@ -20,7 +26,10 @@ fn main() {
     let t = Instant::now();
     let engine = WhisperEngine::load(std::path::Path::new(&args[1])).expect("load model");
     let load_ms = t.elapsed().as_millis();
-    let opts = SttOptions { language: Some("en".into()), ..Default::default() };
+    let opts = SttOptions {
+        language: Some("en".into()),
+        ..Default::default()
+    };
     let t = Instant::now();
     let text = engine.transcribe(&samples, &opts).expect("transcribe");
     let tr_ms = t.elapsed().as_millis();

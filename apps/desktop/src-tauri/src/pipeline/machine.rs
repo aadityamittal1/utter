@@ -28,7 +28,10 @@ pub enum Input {
 /// What the worker must do after a transition.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub enum Cmd {
-    Start { mode: Mode, locked: bool },
+    Start {
+        mode: Mode,
+        locked: bool,
+    },
     /// Switch the running recording to hands-free (visual only).
     Lock,
     /// Stop recording and process the audio.
@@ -60,20 +63,31 @@ pub fn step(state: State, input: &Input) -> (State, Option<Cmd>) {
     match (state, input) {
         (State::Idle, Input::Hotkey(Pressed(a))) => match (mode_of(a), a) {
             (Some(mode), _) => (
-                State::Recording { mode, locked: false },
-                Some(Cmd::Start { mode, locked: false }),
+                State::Recording {
+                    mode,
+                    locked: false,
+                },
+                Some(Cmd::Start {
+                    mode,
+                    locked: false,
+                }),
             ),
             (None, Action::HandsFree) => start_locked(),
             _ => (state, None),
         },
         (State::Idle, Input::Hotkey(DoubleTap(Action::Dictate))) => start_locked(),
-        (State::Recording { mode, locked: false }, Input::Hotkey(ev)) => match ev {
+        (
+            State::Recording {
+                mode,
+                locked: false,
+            },
+            Input::Hotkey(ev),
+        ) => match ev {
             Released(a) if *a == action_of(mode) => (State::Idle, Some(Cmd::Finish)),
             Cancelled(a) if *a == action_of(mode) => (State::Idle, Some(Cmd::Discard)),
-            Pressed(Action::HandsFree) => (
-                State::Recording { mode, locked: true },
-                Some(Cmd::Lock),
-            ),
+            Pressed(Action::HandsFree) => {
+                (State::Recording { mode, locked: true }, Some(Cmd::Lock))
+            }
             Pressed(Action::Cancel) => (State::Idle, Some(Cmd::Discard)),
             _ => (state, None),
         },
@@ -133,7 +147,10 @@ mod tests {
         assert_eq!(
             c,
             vec![
-                Cmd::Start { mode: Mode::Dictate, locked: false },
+                Cmd::Start {
+                    mode: Mode::Dictate,
+                    locked: false
+                },
                 Cmd::Finish
             ]
         );
@@ -147,14 +164,29 @@ mod tests {
         ] {
             let (s, c) = run(&[hk(Pressed(a.clone())), hk(Released(a))]);
             assert_eq!(s, State::Idle);
-            assert_eq!(c, vec![Cmd::Start { mode: m, locked: false }, Cmd::Finish]);
+            assert_eq!(
+                c,
+                vec![
+                    Cmd::Start {
+                        mode: m,
+                        locked: false
+                    },
+                    Cmd::Finish
+                ]
+            );
         }
     }
 
     #[test]
     fn release_of_a_different_action_is_ignored() {
         let (s, c) = run(&[hk(Pressed(Action::Command)), hk(Released(Action::Dictate))]);
-        assert_eq!(s, State::Recording { mode: Mode::Command, locked: false });
+        assert_eq!(
+            s,
+            State::Recording {
+                mode: Mode::Command,
+                locked: false
+            }
+        );
         assert_eq!(c.len(), 1);
     }
 
@@ -165,7 +197,13 @@ mod tests {
             hk(Pressed(Action::HandsFree)),
             hk(Released(Action::Dictate)),
         ]);
-        assert_eq!(s, State::Recording { mode: Mode::Dictate, locked: true });
+        assert_eq!(
+            s,
+            State::Recording {
+                mode: Mode::Dictate,
+                locked: true
+            }
+        );
         assert_eq!(c[1], Cmd::Lock);
         assert_eq!(c.len(), 2);
     }
@@ -183,7 +221,13 @@ mod tests {
             assert_eq!(s, State::Idle);
             assert_eq!(
                 c,
-                vec![Cmd::Start { mode: Mode::Dictate, locked: true }, Cmd::Finish]
+                vec![
+                    Cmd::Start {
+                        mode: Mode::Dictate,
+                        locked: true
+                    },
+                    Cmd::Finish
+                ]
             );
         }
     }
@@ -191,8 +235,20 @@ mod tests {
     #[test]
     fn double_tap_starts_a_locked_recording() {
         let (s, c) = run(&[hk(DoubleTap(Action::Dictate))]);
-        assert_eq!(s, State::Recording { mode: Mode::Dictate, locked: true });
-        assert_eq!(c, vec![Cmd::Start { mode: Mode::Dictate, locked: true }]);
+        assert_eq!(
+            s,
+            State::Recording {
+                mode: Mode::Dictate,
+                locked: true
+            }
+        );
+        assert_eq!(
+            c,
+            vec![Cmd::Start {
+                mode: Mode::Dictate,
+                locked: true
+            }]
+        );
     }
 
     #[test]
@@ -217,7 +273,13 @@ mod tests {
             hk(Cancelled(Action::Dictate)),
             hk(Pressed(Action::DictateEnhance)),
         ]);
-        assert_eq!(s, State::Recording { mode: Mode::DictateEnhance, locked: false });
+        assert_eq!(
+            s,
+            State::Recording {
+                mode: Mode::DictateEnhance,
+                locked: false
+            }
+        );
         assert_eq!(c[1], Cmd::Discard);
     }
 
@@ -229,13 +291,25 @@ mod tests {
             hk(Released(Action::Dictate)),
             hk(Pressed(Action::Dictate)),
         ]);
-        assert_eq!(s, State::Recording { mode: Mode::Dictate, locked: false });
+        assert_eq!(
+            s,
+            State::Recording {
+                mode: Mode::Dictate,
+                locked: false
+            }
+        );
         assert_eq!(
             c,
             vec![
-                Cmd::Start { mode: Mode::Dictate, locked: false },
+                Cmd::Start {
+                    mode: Mode::Dictate,
+                    locked: false
+                },
                 Cmd::Finish,
-                Cmd::Start { mode: Mode::Dictate, locked: false },
+                Cmd::Start {
+                    mode: Mode::Dictate,
+                    locked: false
+                },
             ]
         );
     }

@@ -114,17 +114,17 @@ fn set_text_inner(text: &str, private: bool) -> anyhow::Result<u32> {
         unsafe { EmptyClipboard()? };
         put_bytes(CF_UNICODETEXT, &bytes)?;
         if private {
-        // Keep dictated text out of clipboard history / cloud clipboard / clipboard monitors.
-        put_dword_format(
-            ::windows::core::w!("ExcludeClipboardContentFromMonitorProcessing"),
-            1,
-        );
-        put_dword_format(::windows::core::w!("CanIncludeInClipboardHistory"), 0);
-        put_dword_format(::windows::core::w!("CanUploadToCloudClipboard"), 0);
+            // Keep dictated text out of clipboard history / cloud clipboard / clipboard monitors.
+            put_dword_format(
+                ::windows::core::w!("ExcludeClipboardContentFromMonitorProcessing"),
+                1,
+            );
+            put_dword_format(::windows::core::w!("CanIncludeInClipboardHistory"), 0);
+            put_dword_format(::windows::core::w!("CanUploadToCloudClipboard"), 0);
         }
     } // clipboard closed here
-    // CloseClipboard itself bumps the sequence number, so it must be read AFTER closing;
-    // reading while open yields a stale value and the restore would never fire.
+      // CloseClipboard itself bumps the sequence number, so it must be read AFTER closing;
+      // reading while open yields a stale value and the restore would never fire.
     Ok(clipboard_seq())
 }
 

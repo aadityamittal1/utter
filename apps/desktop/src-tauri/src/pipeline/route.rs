@@ -1,7 +1,7 @@
 //! Pure routing and output-acceptance rules for the dictation pipeline.
 
-use crate::text::local_cleanup::local_cleanup;
 use crate::text::dictionary::apply_replacements;
+use crate::text::local_cleanup::local_cleanup;
 use crate::text::snippets::{match_whole, placeholders_intact, restore};
 use crate::text::style::apply_style_local;
 use crate::text::types::{Category, CleanupLevel, DictEntry, Snippet, StyleKind};
@@ -73,8 +73,8 @@ pub fn plan_route(
 }
 
 const QUESTION_WORDS: &[&str] = &[
-    "what", "why", "how", "when", "where", "who", "which", "can", "could", "would", "should",
-    "is", "are", "do", "does", "did", "will",
+    "what", "why", "how", "when", "where", "who", "which", "can", "could", "would", "should", "is",
+    "are", "do", "does", "did", "will",
 ];
 
 /// True when the dictated text is phrased as a question.
@@ -154,7 +154,11 @@ mod tests {
     #[test]
     fn empty_or_artifact_only_text_is_nothing() {
         for t in ["", "   ", "[BLANK_AUDIO]", "(music)"] {
-            assert_eq!(plan(t, Mode::Dictate, CleanupLevel::Light, true), Route::Nothing, "{t:?}");
+            assert_eq!(
+                plan(t, Mode::Dictate, CleanupLevel::Light, true),
+                Route::Nothing,
+                "{t:?}"
+            );
         }
     }
 
@@ -236,7 +240,12 @@ mod tests {
             Route::Claude(AiKind::Enhance)
         );
         assert_eq!(
-            plan("hello there", Mode::DictateEnhance, CleanupLevel::Light, false),
+            plan(
+                "hello there",
+                Mode::DictateEnhance,
+                CleanupLevel::Light,
+                false
+            ),
             Route::Local
         );
         let r = plan_route(
@@ -277,8 +286,14 @@ mod tests {
 
     #[test]
     fn level_off_or_no_key_is_local() {
-        assert_eq!(plan("hi", Mode::Dictate, CleanupLevel::Off, true), Route::Local);
-        assert_eq!(plan("hi", Mode::Dictate, CleanupLevel::Medium, false), Route::Local);
+        assert_eq!(
+            plan("hi", Mode::Dictate, CleanupLevel::Off, true),
+            Route::Local
+        );
+        assert_eq!(
+            plan("hi", Mode::Dictate, CleanupLevel::Medium, false),
+            Route::Local
+        );
         assert_eq!(
             plan("hi", Mode::Dictate, CleanupLevel::Light, true),
             Route::Claude(AiKind::Cleanup)
@@ -299,7 +314,12 @@ mod tests {
             AiKind::Cleanup,
             &[]
         ));
-        assert!(!accept_ai_output("is this working", "Yes, it is working.", AiKind::Cleanup, &[]));
+        assert!(!accept_ai_output(
+            "is this working",
+            "Yes, it is working.",
+            AiKind::Cleanup,
+            &[]
+        ));
         assert!(!accept_ai_output("fine?", "Fine.", AiKind::Cleanup, &[]));
     }
 
@@ -317,7 +337,8 @@ mod tests {
     fn rejects_empty_and_overlong_cleanup() {
         assert!(!accept_ai_output("hello", "   ", AiKind::Cleanup, &[]));
         let input = "ship it on thursday";
-        let long = "Here is a much longer reply that expands on the input considerably and keeps going.";
+        let long =
+            "Here is a much longer reply that expands on the input considerably and keeps going.";
         assert!(!accept_ai_output(input, long, AiKind::Cleanup, &[]));
         // Same length budget is fine for enhance (4x + 400).
         assert!(accept_ai_output(input, long, AiKind::Enhance, &[]));
@@ -330,16 +351,46 @@ mod tests {
         let s = [snip("my email", "me@example.com")];
         let (prot, map) = protect("send it to my email thanks", &s);
         assert!(prot.contains("⟦S1⟧"));
-        assert!(accept_ai_output(&prot, "Send it to ⟦S1⟧, thanks.", AiKind::Cleanup, &map));
-        assert!(!accept_ai_output(&prot, "Send it to my email, thanks.", AiKind::Cleanup, &map));
-        assert!(!accept_ai_output(&prot, "Send it to ⟦S1⟧ ⟦S1⟧, thanks.", AiKind::Cleanup, &map));
-        assert!(!accept_ai_output(&prot, "Send it to ⟦S1⟧ ⟦S2⟧.", AiKind::Cleanup, &map));
+        assert!(accept_ai_output(
+            &prot,
+            "Send it to ⟦S1⟧, thanks.",
+            AiKind::Cleanup,
+            &map
+        ));
+        assert!(!accept_ai_output(
+            &prot,
+            "Send it to my email, thanks.",
+            AiKind::Cleanup,
+            &map
+        ));
+        assert!(!accept_ai_output(
+            &prot,
+            "Send it to ⟦S1⟧ ⟦S1⟧, thanks.",
+            AiKind::Cleanup,
+            &map
+        ));
+        assert!(!accept_ai_output(
+            &prot,
+            "Send it to ⟦S1⟧ ⟦S2⟧.",
+            AiKind::Cleanup,
+            &map
+        ));
     }
 
     #[test]
     fn command_output_only_needs_to_be_non_empty() {
-        assert!(accept_ai_output("make it shorter", "Short.", AiKind::Command, &[]));
-        assert!(!accept_ai_output("make it shorter", "", AiKind::Command, &[]));
+        assert!(accept_ai_output(
+            "make it shorter",
+            "Short.",
+            AiKind::Command,
+            &[]
+        ));
+        assert!(!accept_ai_output(
+            "make it shorter",
+            "",
+            AiKind::Command,
+            &[]
+        ));
     }
 
     #[test]

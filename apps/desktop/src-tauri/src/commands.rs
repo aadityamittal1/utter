@@ -40,7 +40,11 @@ pub fn ipc_list<T: Serialize>(v: &[T]) -> Vec<Value> {
 
 /// Deserialize a UI object whose `id` may be a numeric string.
 pub fn from_ipc<T: serde::de::DeserializeOwned>(mut v: Value) -> CmdResult<T> {
-    if let Some(n) = v.get("id").and_then(Value::as_str).and_then(|s| s.parse::<i64>().ok()) {
+    if let Some(n) = v
+        .get("id")
+        .and_then(Value::as_str)
+        .and_then(|s| s.parse::<i64>().ok())
+    {
         v["id"] = json!(n);
     }
     serde_json::from_value(v).map_err(|e| format!("Invalid data: {e}"))
@@ -58,8 +62,12 @@ pub fn err<E: std::fmt::Display>(e: E) -> String {
 
 /// Replace the settings (serialised with every other settings write).
 pub fn apply_settings(st: &Arc<AppState>, new: Settings) -> CmdResult<Settings> {
-    let _guard = st.settings_lock.lock();
-    apply_locked(st, new)
+    let (old, new) = {
+        let _guard = st.settings_lock.lock();
+        commit_locked(st, new)?
+    };
+    after_commit(st, &old, &new);
+    Ok(new)
 }
 
 /// Read-modify-write under the settings lock, so concurrent writers never lose each other's edits.
@@ -67,10 +75,14 @@ pub fn update_settings_with(
     st: &Arc<AppState>,
     f: impl FnOnce(&mut Settings),
 ) -> CmdResult<Settings> {
-    let _guard = st.settings_lock.lock();
-    let mut s = st.settings_snapshot();
-    f(&mut s);
-    apply_locked(st, s)
+    let (old, new) = {
+        let _guard = st.settings_lock.lock();
+        let mut s = st.settings_snapshot();
+        f(&mut s);
+        commit_locked(st, s)?
+    };
+    after_commit(st, &old, &new);
+    Ok(new)
 }
 
 /// First chord of a transform's shortcut as stored in `settings.shortcuts["transform:<id>"]`.
@@ -82,11 +94,12 @@ fn transform_chord(s: &Settings, id: &str) -> Option<String> {
         .cloned()
 }
 
-/// Persist `new`, apply side effects of what changed, and notify the UI. Caller holds
-/// `settings_lock`.
-fn apply_locked(st: &Arc<AppState>, new: Settings) -> CmdResult<Settings> {
+/// Persist `new` and update in-memory state (settings, bindings, transform mirror). Caller
+/// holds `settings_lock`; nothing here may block on the UI thread. Returns `(old, new)`.
+fn commit_locked(st: &Arc<AppState>, new: Settings) -> CmdResult<(Settings, Settings)> {
     let old = st.settings_snapshot();
-    settings::save(&st.settings_path(), &new).map_err(|e| format!("Couldn't save settings: {e}"))?;
+    settings::save(&st.settings_path(), &new)
+        .map_err(|e| format!("Couldn't save settings: {e}"))?;
     *st.settings.write() = new.clone();
     if old.microphone != new.microphone || old.keep_mic_warm != new.keep_mic_warm {
         st.drop_recorder();
@@ -103,6 +116,12 @@ fn apply_locked(st: &Arc<AppState>, new: Settings) -> CmdResult<Settings> {
         }
         st.rebuild_bindings();
     }
+    Ok((old, new))
+}
+
+/// Side effects that touch windows / the OS and the UI notification. Runs AFTER the settings
+/// lock is released, so a main-thread command waiting on the lock can never deadlock with it.
+fn after_commit(st: &Arc<AppState>, old: &Settings, new: &Settings) {
     if old.launch_at_login != new.launch_at_login {
         set_autostart(&st.app, new.launch_at_login);
     }
@@ -110,11 +129,11 @@ fn apply_locked(st: &Arc<AppState>, new: Settings) -> CmdResult<Settings> {
         let cur = st.pill.lock().clone();
         crate::windows::sync_pill(&st.app, &cur, st.pill_allowed());
     }
-    if old.history_retention != new.history_retention && new.history_retention != Retention::Forever {
+    if old.history_retention != new.history_retention && new.history_retention != Retention::Forever
+    {
         st.purge_history();
     }
     st.emit("settings://changed", new.clone());
-    Ok(new)
 }
 
 pub fn set_autostart(app: &AppHandle, on: bool) {
@@ -219,7 +238,14 @@ pub fn list_models(st: St) -> Vec<Value> {
         .collect()
 }
 
-fn emit_progress(st: &AppState, id: &str, downloaded: u64, total: u64, done: bool, error: Option<String>) {
+fn emit_progress(
+    st: &AppState,
+    id: &str,
+    downloaded: u64,
+    total: u64,
+    done: bool,
+    error: Option<String>,
+) {
     let mut v = json!({ "id": id, "downloaded": downloaded, "total": total, "done": done });
     if let Some(e) = error {
         v["error"] = Value::String(e);
@@ -229,7 +255,10 @@ fn emit_progress(st: &AppState, id: &str, downloaded: u64, total: u64, done: boo
 
 #[tauri::command]
 pub fn download_model(st: St, id: String) -> CmdResult<()> {
-    let info = *catalog::catalog().iter().find(|m| m.id == id).ok_or("Unknown model")?;
+    let info = *catalog::catalog()
+        .iter()
+        .find(|m| m.id == id)
+        .ok_or("Unknown model")?;
     let state: Arc<AppState> = st.inner().clone();
     let token = CancellationToken::new();
     {
@@ -256,13 +285,15 @@ pub fn download_model(st: St, id: String) -> CmdResult<()> {
             Ok(_) => {
                 emit_progress(&state, &id, info.size_bytes, info.size_bytes, true, None);
                 // First run: make the model that just arrived the active one.
-                let _guard = state.settings_lock.lock();
-                let cur = state.settings_snapshot();
-                if !state.model_downloaded(&cur.active_model) {
-                    let mut s = cur;
-                    s.active_model = id.clone();
-                    let _ = apply_locked(&state, s);
-                    drop(_guard);
+                let before = state.settings_snapshot().active_model;
+                let st2 = state.clone();
+                let id2 = id.clone();
+                let _ = update_settings_with(&state, |s| {
+                    if !st2.model_downloaded(&s.active_model) {
+                        s.active_model = id2;
+                    }
+                });
+                if state.settings_snapshot().active_model != before {
                     preload_engine(&state);
                 }
             }
@@ -339,15 +370,22 @@ pub async fn list_microphones() -> Vec<String> {
 
 #[tauri::command]
 pub async fn start_mic_test(st: St<'_>) -> CmdResult<()> {
-    if st.is_session_active() {
-        return Err("Finish dictating first".into());
-    }
     let state = st.inner().clone();
     tauri::async_runtime::spawn_blocking(move || -> CmdResult<()> {
-        let rec = state.recorder().map_err(|_| "Microphone unavailable".to_string())?;
-        rec.start().map_err(|_| "Microphone unavailable".to_string())?;
+        // Checked here (not before spawning) and the flag is set before the stream starts,
+        // so a dictation that starts meanwhile sees the test and stops it first.
+        if state.is_session_active() {
+            return Err("Finish dictating first".into());
+        }
         *state.mic_testing.lock() = true;
-        Ok(())
+        let started = state
+            .recorder()
+            .and_then(|r| r.start())
+            .map_err(|_| "Microphone unavailable".to_string());
+        if started.is_err() {
+            *state.mic_testing.lock() = false;
+        }
+        started
     })
     .await
     .map_err(err)?
@@ -434,7 +472,9 @@ fn retry_into_focus(st: &Arc<AppState>, id: i64) {
             let method = crate::insert::paste_method_for(&proc);
             match crate::insert::insert_text(&item.final_text, method, None) {
                 Ok(()) => st.set_pill_timed(PillKind::Done, "dictate", None, 900),
-                Err(_) => st.pill_error("dictate", "Couldn't paste, text is on your clipboard", 4000),
+                Err(_) => {
+                    st.pill_error("dictate", "Couldn't paste, text is on your clipboard", 4000)
+                }
             }
         }
         Err(msg) => st.pill_error("dictate", &msg, 3500),
@@ -448,10 +488,15 @@ mod tests {
     #[test]
     fn transform_chord_reads_first_nonempty_settings_entry() {
         let mut s = Settings::default();
-        assert_eq!(transform_chord(&s, "polish").as_deref(), Some("Alt+Shift+1"));
-        s.shortcuts.insert(Action::Transform("polish".into()), vec![]);
+        assert_eq!(
+            transform_chord(&s, "polish").as_deref(),
+            Some("Alt+Shift+1")
+        );
+        s.shortcuts
+            .insert(Action::Transform("polish".into()), vec![]);
         assert_eq!(transform_chord(&s, "polish"), None);
-        s.shortcuts.insert(Action::Transform("x".into()), vec!["  ".into()]);
+        s.shortcuts
+            .insert(Action::Transform("x".into()), vec!["  ".into()]);
         assert_eq!(transform_chord(&s, "x"), None);
         assert_eq!(transform_chord(&s, "missing"), None);
     }

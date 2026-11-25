@@ -43,6 +43,10 @@ pub struct PillState {
     pub retryable: bool,
 }
 
+/// Folder (inside the app data dir) holding saved recordings. The asset-protocol scope in
+/// `tauri.conf.json` must be `$APPDATA/<this>/**`; `$APPDATA` already is the app data dir.
+pub const AUDIO_DIR_NAME: &str = "audio";
+
 /// May a pill Retry act on this state? Only a retryable transcription-failure error.
 pub fn retry_allowed(p: &PillState) -> bool {
     p.state == PillKind::Error && p.retryable
@@ -146,7 +150,7 @@ impl AppState {
         self.data_dir.join("models")
     }
     pub fn audio_dir(&self) -> PathBuf {
-        self.data_dir.join("audio")
+        self.data_dir.join(AUDIO_DIR_NAME)
     }
 
     pub fn settings_snapshot(&self) -> Settings {
@@ -196,7 +200,13 @@ impl AppState {
     // ---- pill ----
 
     /// Publish a pill state. Returns the generation, used by timed resets.
-    pub fn set_pill(&self, kind: PillKind, mode: &str, elapsed_ms: u64, message: Option<String>) -> u64 {
+    pub fn set_pill(
+        &self,
+        kind: PillKind,
+        mode: &str,
+        elapsed_ms: u64,
+        message: Option<String>,
+    ) -> u64 {
         self.publish_pill(PillState {
             state: kind,
             mode: mode.to_string(),
@@ -215,12 +225,22 @@ impl AppState {
         }
         self.emit("pill://state", st.clone());
         crate::windows::sync_pill(&self.app, &st, self.pill_allowed());
-        crate::tray::sync_icon(&self.app, matches!(kind, PillKind::Listening | PillKind::Locked), self.is_paused());
+        crate::tray::sync_icon(
+            &self.app,
+            matches!(kind, PillKind::Listening | PillKind::Locked),
+            self.is_paused(),
+        );
         gen
     }
 
     /// Publish `kind`, then return to idle after `ms` unless something newer was published.
-    pub fn set_pill_timed(self: &Arc<Self>, kind: PillKind, mode: &str, message: Option<String>, ms: u64) {
+    pub fn set_pill_timed(
+        self: &Arc<Self>,
+        kind: PillKind,
+        mode: &str,
+        message: Option<String>,
+        ms: u64,
+    ) {
         let gen = self.set_pill(kind, mode, 0, message);
         let me = self.clone();
         std::thread::spawn(move || {
@@ -402,6 +422,15 @@ mod tests {
     }
 
     #[test]
+    fn asset_scope_matches_the_audio_dir() {
+        let conf: serde_json::Value =
+            serde_json::from_str(include_str!("../tauri.conf.json")).unwrap();
+        let scope = &conf["app"]["security"]["assetProtocol"]["scope"];
+        assert_eq!(scope[0], format!("$APPDATA/{AUDIO_DIR_NAME}/**"));
+        assert_eq!(conf["app"]["security"]["assetProtocol"]["enable"], true);
+    }
+
+    #[test]
     fn retry_only_for_retryable_errors() {
         assert!(retry_allowed(&pill(PillKind::Error, true)));
         assert!(!retry_allowed(&pill(PillKind::Error, false)));
@@ -416,7 +445,10 @@ mod tests {
         assert_eq!(v["retryable"], true);
         assert_eq!(v["state"], "error");
         assert_eq!(v["elapsedMs"], 0);
-        assert_eq!(serde_json::to_value(PillState::idle()).unwrap()["retryable"], false);
+        assert_eq!(
+            serde_json::to_value(PillState::idle()).unwrap()["retryable"],
+            false
+        );
     }
 
     #[test]

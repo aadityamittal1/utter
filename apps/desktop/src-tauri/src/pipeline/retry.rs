@@ -86,5 +86,7 @@ pub fn retry_history(st: &AppState, id: i64) -> Result<HistoryItem, String> {
     }
     *st.last.lock() = Some(crate::app_state::LastResult { text: res.text });
     st.emit("history://changed", ());
-    st.db.get_history(new_id).ok_or_else(|| "Retry failed".to_string())
+    st.db
+        .get_history(new_id)
+        .ok_or_else(|| "Retry failed".to_string())
 }

@@ -103,7 +103,10 @@ mod tests {
     fn works_as_json_map_key() {
         let mut m = BTreeMap::new();
         m.insert(Action::Dictate, vec!["Ctrl+Win".to_string()]);
-        m.insert(Action::Transform("polish".into()), vec!["Alt+Shift+1".to_string()]);
+        m.insert(
+            Action::Transform("polish".into()),
+            vec!["Alt+Shift+1".to_string()],
+        );
         let json = serde_json::to_string(&m).unwrap();
         let back: BTreeMap<Action, Vec<String>> = serde_json::from_str(&json).unwrap();
         assert_eq!(back, m);

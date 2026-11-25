@@ -31,8 +31,6 @@ whisper-rs = "0.16"
 cpal = "0.18"
 rubato = "5"
 hound = "3"
-arboard = "3"
-clipboard-win = "5"
 rusqlite = { version = "0.43", features = ["bundled"] }
 keyring = "4"
 anyhow = "1"

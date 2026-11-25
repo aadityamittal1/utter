@@ -1,13 +1,13 @@
 //! Local SQLite store behind History, Dictionary, Snippets, Transforms, Notes, Insights and usage.
 
 pub mod db;
-pub mod history;
 pub mod dictionary;
+pub mod history;
+pub mod insights;
+pub mod notes;
 pub mod snippets;
 pub mod transforms;
-pub mod notes;
 pub mod usage;
-pub mod insights;
 
 pub use db::Db;
 pub use history::{HistoryItem, HistoryMode, HistoryStat, NewHistory, Retention};

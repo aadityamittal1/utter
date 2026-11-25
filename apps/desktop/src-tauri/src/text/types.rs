@@ -71,9 +71,18 @@ mod tests {
 
     #[test]
     fn enums_serialize_camel_case_with_defaults() {
-        assert_eq!(serde_json::to_string(&Category::WorkChat).unwrap(), "\"workChat\"");
-        assert_eq!(serde_json::to_string(&StyleKind::VeryCasual).unwrap(), "\"veryCasual\"");
-        assert_eq!(serde_json::to_string(&CleanupLevel::Medium).unwrap(), "\"medium\"");
+        assert_eq!(
+            serde_json::to_string(&Category::WorkChat).unwrap(),
+            "\"workChat\""
+        );
+        assert_eq!(
+            serde_json::to_string(&StyleKind::VeryCasual).unwrap(),
+            "\"veryCasual\""
+        );
+        assert_eq!(
+            serde_json::to_string(&CleanupLevel::Medium).unwrap(),
+            "\"medium\""
+        );
         assert_eq!(Category::default(), Category::Other);
         assert_eq!(StyleKind::default(), StyleKind::Formal);
         assert_eq!(CleanupLevel::default(), CleanupLevel::Light);

@@ -1,15 +1,17 @@
 //! IPC commands for stored data: history, dictionary, snippets, transforms, notes, stats.
 
 use crate::app_state::AppState;
-use crate::commands::{err, from_ipc, ipc, ipc_list, parse_id, update_settings_with, CmdResult, St};
-use crate::hotkeys::action::Action;
-use std::sync::Arc;
+use crate::commands::{
+    err, from_ipc, ipc, ipc_list, parse_id, update_settings_with, CmdResult, St,
+};
 use crate::context::foreground_windows::foreground_app;
+use crate::hotkeys::action::Action;
 use crate::insert::{copy_text, insert_text, paste_method_for};
 use crate::store::{Note, Transform};
 use crate::text::dictionary::learn_candidates;
 use crate::text::types::{DictEntry, Snippet};
 use serde_json::Value;
+use std::sync::Arc;
 use std::time::Duration;
 
 // ---- history ----
@@ -23,7 +25,11 @@ pub fn history_list(st: St, query: Option<String>, limit: u32, offset: u32) -> V
 #[tauri::command]
 pub fn history_update_text(st: St, id: String, text: String) -> CmdResult<Vec<String>> {
     let id = parse_id(&id)?;
-    let before = st.db.get_history(id).ok_or("That item no longer exists")?.final_text;
+    let before = st
+        .db
+        .get_history(id)
+        .ok_or("That item no longer exists")?
+        .final_text;
     st.db.update_history_text(id, &text).map_err(err)?;
     st.emit("history://changed", ());
     Ok(learn_candidates(&before, &text))
@@ -46,7 +52,11 @@ pub async fn history_retry(st: St<'_>, id: String) -> CmdResult<Value> {
 #[tauri::command]
 pub async fn history_insert(st: St<'_>, id: String) -> CmdResult<()> {
     let id = parse_id(&id)?;
-    let text = st.db.get_history(id).ok_or("That item no longer exists")?.final_text;
+    let text = st
+        .db
+        .get_history(id)
+        .ok_or("That item no longer exists")?
+        .final_text;
     let state = st.inner().clone();
     tauri::async_runtime::spawn_blocking(move || -> CmdResult<()> {
         use tauri::Manager;
@@ -71,7 +81,10 @@ pub async fn history_copy(st: St<'_>, id: String) -> CmdResult<()> {
     let state = st.inner().clone();
     // The clipboard can be held by another process for a moment: keep it off the main thread.
     tauri::async_runtime::spawn_blocking(move || -> CmdResult<()> {
-        let item = state.db.get_history(id).ok_or("That item no longer exists")?;
+        let item = state
+            .db
+            .get_history(id)
+            .ok_or("That item no longer exists")?;
         copy_text(&item.final_text);
         Ok(())
     })
@@ -112,7 +125,10 @@ pub fn dictionary_list(st: St) -> Vec<Value> {
 
 #[tauri::command]
 pub fn dictionary_add(st: St, word: String, heard_as: Option<String>) -> CmdResult<Value> {
-    let e = st.db.dictionary_add(&word, heard_as.as_deref(), false).map_err(err)?;
+    let e = st
+        .db
+        .dictionary_add(&word, heard_as.as_deref(), false)
+        .map_err(err)?;
     Ok(ipc(&e))
 }
 
@@ -146,7 +162,10 @@ pub fn snippets_list(st: St) -> Vec<Value> {
 
 #[tauri::command]
 pub fn snippets_add(st: St, trigger: String, expansion: String) -> CmdResult<Value> {
-    Ok(ipc(&st.db.snippets_add(&trigger, &expansion).map_err(err)?))
+    Ok(ipc(&st
+        .db
+        .snippets_add(&trigger, &expansion)
+        .map_err(err)?))
 }
 
 #[tauri::command]
@@ -194,26 +213,29 @@ pub fn transforms_list(st: St) -> Vec<Transform> {
 }
 
 #[tauri::command]
-pub fn transforms_add(
-    st: St,
+pub async fn transforms_add(
+    st: St<'_>,
     name: String,
     instruction: String,
     shortcut: Option<String>,
 ) -> CmdResult<Transform> {
-    let t = st.db.transforms_add(&name, &instruction, shortcut.as_deref()).map_err(err)?;
+    let t = st
+        .db
+        .transforms_add(&name, &instruction, shortcut.as_deref())
+        .map_err(err)?;
     set_transform_shortcut(st.inner(), &t.id, t.shortcut.as_deref());
     Ok(t)
 }
 
 #[tauri::command]
-pub fn transforms_update(st: St, transform: Transform) -> CmdResult<Transform> {
+pub async fn transforms_update(st: St<'_>, transform: Transform) -> CmdResult<Transform> {
     let t = st.db.transforms_update(&transform).map_err(err)?;
     set_transform_shortcut(st.inner(), &t.id, t.shortcut.as_deref());
     Ok(t)
 }
 
 #[tauri::command]
-pub fn transforms_delete(st: St, id: String) -> CmdResult<()> {
+pub async fn transforms_delete(st: St<'_>, id: String) -> CmdResult<()> {
     st.db.transforms_delete(&id).map_err(err)?;
     let key = Action::Transform(id);
     let _ = update_settings_with(st.inner(), |s| {
@@ -265,4 +287,3 @@ pub fn usage_get(st: St) -> Value {
     let month = chrono::Local::now().format("%Y-%m").to_string();
     serde_json::to_value(st.db.usage_for_month(&month)).unwrap_or(Value::Null)
 }
-

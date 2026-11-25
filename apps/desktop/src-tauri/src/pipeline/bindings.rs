@@ -76,7 +76,8 @@ mod tests {
     fn empty_and_invalid_chords_are_skipped() {
         let mut s = Settings::default();
         s.shortcuts.insert(Action::CopyLast, vec![]);
-        s.shortcuts.insert(Action::PasteLast, vec!["Bogus+Key".into()]);
+        s.shortcuts
+            .insert(Action::PasteLast, vec!["Bogus+Key".into()]);
         let b = build_bindings(&s, &[]);
         assert!(!b.iter().any(|x| x.action == Action::CopyLast));
         assert!(!b.iter().any(|x| x.action == Action::PasteLast));
@@ -87,14 +88,21 @@ mod tests {
         let s = Settings::default();
         let b = build_bindings(
             &s,
-            &[tf("polish", Some("Alt+Shift+9")), tf("tabc", Some("Alt+Shift+8"))],
+            &[
+                tf("polish", Some("Alt+Shift+9")),
+                tf("tabc", Some("Alt+Shift+8")),
+            ],
         );
         let find = |id: &str| {
             b.iter()
                 .find(|x| x.action == Action::Transform(id.into()))
                 .map(|x| x.chord.to_string())
         };
-        assert_eq!(find("polish").as_deref(), Some("Alt+Shift+1"), "settings is authoritative");
+        assert_eq!(
+            find("polish").as_deref(),
+            Some("Alt+Shift+1"),
+            "settings is authoritative"
+        );
         assert_eq!(find("tabc").as_deref(), Some("Alt+Shift+8"));
         assert_eq!(find("prompt").as_deref(), Some("Alt+Shift+2"));
     }
