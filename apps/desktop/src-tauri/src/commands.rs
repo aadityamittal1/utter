@@ -194,13 +194,28 @@ pub fn clear_api_key() -> CmdResult<()> {
 
 fn llm_message(e: &LlmError) -> String {
     match e {
-        LlmError::Auth | LlmError::NoKey => "That key was rejected. Check it and try again.".into(),
-        LlmError::RateLimited => "The key works but is rate limited right now.".into(),
+        LlmError::Auth(status) => format!(
+            "That key was rejected. Check it and try again.{}",
+            http_suffix(*status)
+        ),
+        LlmError::NoKey => "That key was rejected. Check it and try again.".into(),
+        LlmError::RateLimited => format!(
+            "The key works but is rate limited right now.{}",
+            http_suffix(Some(429))
+        ),
         LlmError::Timeout | LlmError::Network(_) => {
             "Couldn't reach Anthropic. Check your connection.".into()
         }
+        // The message is already truncated and never contains the key.
+        LlmError::Api { status, message } => {
+            format!("Anthropic said: {message} (HTTP {status})")
+        }
         _ => "Couldn't verify the key.".into(),
     }
+}
+
+fn http_suffix(status: Option<u16>) -> String {
+    status.map(|s| format!(" (HTTP {s})")).unwrap_or_default()
 }
 
 #[tauri::command]
@@ -484,6 +499,20 @@ fn retry_into_focus(st: &Arc<AppState>, id: i64) {
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn llm_messages_show_status_and_api_text() {
+        assert_eq!(
+            llm_message(&LlmError::Api {
+                status: 400,
+                message: "bad thing".into()
+            }),
+            "Anthropic said: bad thing (HTTP 400)"
+        );
+        assert!(llm_message(&LlmError::Auth(Some(401))).ends_with("(HTTP 401)"));
+        assert!(llm_message(&LlmError::RateLimited).ends_with("(HTTP 429)"));
+        assert!(!llm_message(&LlmError::Auth(None)).contains("HTTP"));
+    }
 
     #[test]
     fn transform_chord_reads_first_nonempty_settings_entry() {

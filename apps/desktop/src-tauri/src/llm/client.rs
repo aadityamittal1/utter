@@ -38,8 +38,9 @@ pub struct Completion {
 pub enum LlmError {
     #[error("no API key set")]
     NoKey,
+    /// The key was rejected (HTTP status when known).
     #[error("the API key was rejected")]
-    Auth,
+    Auth(Option<u16>),
     #[error("rate limited by the API")]
     RateLimited,
     #[error("the model declined to respond")]
@@ -136,7 +137,7 @@ fn parse_completion(body: &str, fallback_model: &str) -> Result<Completion, LlmE
 
 fn error_from_status(status: u16, body: &str) -> LlmError {
     match status {
-        401 | 403 => LlmError::Auth,
+        401 | 403 => LlmError::Auth(Some(status)),
         429 => LlmError::RateLimited,
         _ => {
             let message = serde_json::from_str::<Value>(body)
@@ -185,10 +186,10 @@ impl ClaudeClient {
         self
     }
 
-    /// The key as a sensitive header value (excluded from debug output).
+    /// `Bearer <key>` as a sensitive header value (excluded from debug output).
     fn key_header(&self) -> Result<reqwest::header::HeaderValue, LlmError> {
-        let mut v =
-            reqwest::header::HeaderValue::from_str(&self.key).map_err(|_| LlmError::Auth)?;
+        let mut v = reqwest::header::HeaderValue::from_str(&format!("Bearer {}", self.key))
+            .map_err(|_| LlmError::Auth(None))?;
         v.set_sensitive(true);
         Ok(v)
     }
@@ -209,7 +210,7 @@ impl ClaudeClient {
         let resp = self
             .http
             .post(format!("{}/v1/messages", self.base_url))
-            .header("x-api-key", self.key_header()?)
+            .header(reqwest::header::AUTHORIZATION, self.key_header()?)
             .header("anthropic-version", ANTHROPIC_VERSION)
             .header("content-type", "application/json")
             .body(request_body(&self.model, req).to_string())
@@ -232,7 +233,7 @@ impl ClaudeClient {
         let resp = self
             .http
             .get(format!("{}/v1/models?limit=1", self.base_url))
-            .header("x-api-key", self.key_header()?)
+            .header(reqwest::header::AUTHORIZATION, self.key_header()?)
             .header("anthropic-version", ANTHROPIC_VERSION)
             .send()
             .await
@@ -241,6 +242,7 @@ impl ClaudeClient {
         if (200..300).contains(&status) {
             return Ok(());
         }
+        log::warn!("API key check failed: HTTP {status}");
         let body = resp.text().await.unwrap_or_default();
         Err(error_from_status(status, &body))
     }
@@ -295,7 +297,7 @@ mod tests {
         let m = server
             .mock("POST", "/v1/messages")
             .match_header("anthropic-version", "2026-10-21")
-            .match_header("x-api-key", "sk-ant-secret")
+            .match_header("authorization", "Bearer sk-ant-secret")
             .match_header("content-type", "application/json")
             .with_status(200)
             .with_header("content-type", "application/json")
@@ -332,7 +334,7 @@ mod tests {
             .complete(&req(Thinking::Disabled))
             .await
             .unwrap_err();
-        assert_eq!(err, LlmError::Auth);
+        assert_eq!(err, LlmError::Auth(Some(401)));
 
         let mut server = mockito::Server::new_async().await;
         let _b = server
@@ -411,7 +413,7 @@ mod tests {
         let mut server = mockito::Server::new_async().await;
         let m = server
             .mock("GET", "/v1/models?limit=1")
-            .match_header("x-api-key", "sk-ant-secret")
+            .match_header("authorization", "Bearer sk-ant-secret")
             .match_header("anthropic-version", "2026-10-21")
             .with_status(200)
             .with_body(r#"{"data":[]}"#)
@@ -429,7 +431,7 @@ mod tests {
             .await;
         assert_eq!(
             client(&server).validate().await.unwrap_err(),
-            LlmError::Auth
+            LlmError::Auth(Some(401))
         );
     }
 
@@ -454,7 +456,7 @@ mod tests {
         let mut server = mockito::Server::new_async().await;
         let m = server
             .mock("POST", "/v1/messages")
-            .match_header("x-api-key", "sk-ant-secret")
+            .match_header("authorization", "Bearer sk-ant-secret")
             .with_status(200)
             .with_body(r#"{"content":[{"type":"text","text":"ok"}]}"#)
             .create_async()
@@ -472,7 +474,7 @@ mod tests {
     fn error_display_never_contains_key() {
         let errs = [
             LlmError::NoKey,
-            LlmError::Auth,
+            LlmError::Auth(Some(401)),
             LlmError::RateLimited,
             LlmError::Refusal,
             LlmError::MaxTokens,
