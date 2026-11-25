@@ -3,7 +3,6 @@ name: Release
 on:
   push:
     tags: ["v*"]
-  workflow_dispatch:
 
 permissions:
   contents: write
@@ -16,19 +15,28 @@ jobs:
     name: Build ${{ matrix.target }}
     strategy:
       fail-fast: false
+      # One at a time so the two jobs never race to create the same draft release.
+      max-parallel: 1
       matrix:
-        include:
-          - os: windows-latest
-            target: x86_64-pc-windows-msvc
-          - os: windows-11-arm
-            target: aarch64-pc-windows-msvc
-    runs-on: ${{ matrix.os }}
+        target: [x86_64-pc-windows-msvc, aarch64-pc-windows-msvc]
+    # Both installers are built on an x64 runner (ARM64 is cross-compiled).
+    runs-on: windows-latest
     timeout-minutes: 90
     env:
       # Short target dir avoids Windows long-path link errors (LNK1104).
       CARGO_TARGET_DIR: C:\t
     steps:
       - uses: actions/checkout@v4
+
+      - name: Check tag matches app version
+        shell: pwsh
+        run: |
+          $version = (Get-Content apps/desktop/src-tauri/tauri.conf.json -Raw | ConvertFrom-Json).version
+          $tag = "${{ github.ref_name }}".TrimStart("v")
+          if ($tag -ne $version) {
+            Write-Error "Tag '${{ github.ref_name }}' does not match tauri.conf.json version '$version'."
+            exit 1
+          }
 
       - uses: actions/setup-node@v4
         with:
@@ -37,20 +45,26 @@ jobs:
           cache-dependency-path: apps/desktop/package-lock.json
 
       - uses: dtolnay/rust-toolchain@stable
-        with:
-          targets: ${{ matrix.target }}
+
+      - name: Add Rust target
+        run: rustup target add ${{ matrix.target }}
 
       - uses: Swatinem/rust-cache@v2
         with:
           workspaces: apps/desktop/src-tauri
           key: ${{ matrix.target }}
 
-      - name: Install LLVM (needed by whisper-rs bindgen)
+      # Needed by whisper-rs bindgen. The runner's LLVM is x64, which is what the
+      # build host needs even when cross-compiling to ARM64.
+      - name: Install LLVM
         shell: pwsh
         run: |
-          choco install llvm -y --no-progress
-          "LIBCLANG_PATH=C:\Program Files\LLVM\bin" | Out-File -FilePath $env:GITHUB_ENV -Append -Encoding utf8
-          "C:\Program Files\LLVM\bin" | Out-File -FilePath $env:GITHUB_PATH -Append -Encoding utf8
+          $bin = Join-Path $env:ProgramFiles "LLVM\bin"
+          if (-not (Test-Path (Join-Path $bin "libclang.dll"))) {
+            choco install llvm -y --no-progress
+          }
+          "LIBCLANG_PATH=$bin" | Out-File -FilePath $env:GITHUB_ENV -Append -Encoding utf8
+          $bin | Out-File -FilePath $env:GITHUB_PATH -Append -Encoding utf8
 
       - name: Install JS dependencies
         working-directory: apps/desktop

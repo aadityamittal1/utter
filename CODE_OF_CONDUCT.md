@@ -1,6 +1,6 @@
 # Code of Conduct
 
-Utter follows the [Contributor Covenant, version 2.1](https://www.contributor-covenant.org/version/2/1/code_of_conduct/). The full text is at that link and applies to all project spaces.
+Utter follows the [Contributor Covenant, version 2.1](https://www.contributor-covenant.org/version/2/1/code_of_conduct.html). The full text is at that link and applies to all project spaces.
 
 ## Summary
 
@@ -30,7 +30,7 @@ This applies in all project spaces (issues, pull requests, discussions, reviews)
 
 Maintainers are responsible for clarifying and enforcing these standards. They may remove, edit or reject comments, commits, issues and other contributions that do not follow this Code of Conduct, and may temporarily or permanently ban anyone for behavior they judge inappropriate, threatening, offensive or harmful.
 
-To report a problem, use GitHub's private reporting: open a private report at <https://github.com/aadityamittal1/utter/security/advisories/new> and say it is a Code of Conduct report, or contact the maintainers through GitHub. Reports are handled privately, and maintainers will respect the privacy and safety of the reporter. Enforcement follows the [Contributor Covenant enforcement guidelines](https://www.contributor-covenant.org/version/2/1/code_of_conduct/#enforcement-guidelines) (correction, warning, temporary ban, permanent ban).
+To report a problem, use GitHub's private reporting: open a private report at <https://github.com/aadityamittal1/utter/security/advisories/new> and say it is a Code of Conduct report, or contact the maintainers through GitHub. Reports are handled privately, and maintainers will respect the privacy and safety of the reporter. Enforcement follows the [Contributor Covenant enforcement guidelines](https://www.contributor-covenant.org/version/2/1/code_of_conduct.html#enforcement-guidelines) (correction, warning, temporary ban, permanent ban).
 
 ## Attribution
 

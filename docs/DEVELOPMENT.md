@@ -50,7 +50,7 @@ Reproduce:
 
 ```
 cd apps/desktop/src-tauri
-cargo run --release --example bench -- "%APPDATA%\dev.utter.app\models\ggml-base.bin" testsixtures	en_seconds.wav
+cargo run --release --example bench -- "%APPDATA%\dev.utter.app\models\ggml-base.bin" tests\fixtures\ten_seconds.wav
 ```
 
 Notes from the emulated run:
@@ -83,6 +83,6 @@ cargo test --lib
 
 ## Releases
 
-Pushing a tag `v*` runs `.github/workflows/release.yml`, which builds unsigned NSIS installers for x64 and ARM64 and attaches them to a **draft** GitHub Release. Bump the version in `apps/desktop/package.json`, `src-tauri/Cargo.toml` and `src-tauri/tauri.conf.json`, and update `CHANGELOG.md` first. CI and releases use a short `CARGO_TARGET_DIR` (`C:\t`) for the long-path issue above.
+Pushing a tag `v*` runs `.github/workflows/release.yml`, which builds unsigned NSIS installers for x64 and ARM64 (both cross-built on `windows-latest`) and attaches them to a **draft** GitHub Release. Bump the version in `apps/desktop/package.json`, `src-tauri/Cargo.toml` and `src-tauri/tauri.conf.json`, and update `CHANGELOG.md` first. The release job fails if the tag does not match the version in `tauri.conf.json`. CI and releases use a short `CARGO_TARGET_DIR` (`C:\t`) for the long-path issue above.
 
 Utter is a Windows app: Rust commands that link the Tauri crate must run on Windows with MSVC and LLVM (see Prerequisites).

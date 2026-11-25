@@ -43,9 +43,12 @@ jobs:
       - name: Install LLVM (needed by whisper-rs bindgen)
         shell: pwsh
         run: |
-          choco install llvm -y --no-progress
-          "LIBCLANG_PATH=C:\Program Files\LLVM\bin" | Out-File -FilePath $env:GITHUB_ENV -Append -Encoding utf8
-          "C:\Program Files\LLVM\bin" | Out-File -FilePath $env:GITHUB_PATH -Append -Encoding utf8
+          $bin = Join-Path $env:ProgramFiles "LLVM\bin"
+          if (-not (Test-Path (Join-Path $bin "libclang.dll"))) {
+            choco install llvm -y --no-progress
+          }
+          "LIBCLANG_PATH=$bin" | Out-File -FilePath $env:GITHUB_ENV -Append -Encoding utf8
+          $bin | Out-File -FilePath $env:GITHUB_PATH -Append -Encoding utf8
 
       - name: Install JS dependencies
         working-directory: apps/desktop

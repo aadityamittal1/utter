@@ -6,7 +6,7 @@
 
 **Speak anywhere. Utter writes it.**
 
-Utter is free, open source dictation for Windows. Hold **Ctrl+Win**, talk, let go. Clean text appears in whatever app you were typing in, about a second later.
+Utter is free, open source dictation for Windows. Hold **Ctrl+Win**, talk, let go. Clean text appears in whatever app you were typing in, moments later.
 
 Speech recognition runs on your PC with Whisper. Cleanup and rewriting use Claude Haiku through your own Anthropic API key. Audio never leaves your machine.
 
@@ -79,7 +79,7 @@ Every shortcut can be rebound in Settings, Shortcuts. Recordings under 0.4 secon
 - **Audio never leaves your PC.** Speech recognition is local.
 - Only **text** goes to Claude, and only if you added a key. The foreground app name is included as context (you can turn that off). No screenshots, no reading other fields.
 - **No telemetry, no analytics, no accounts.**
-- History retention is yours to choose: forever, 24 hours, or never. Keeping audio (14 days) is optional.
+- History retention is yours to choose: forever, 24 hours, or never. Recordings are kept locally for 14 days by default so you can replay or retry them; turn this off in Settings, Privacy.
 
 Details: [docs/PRIVACY.md](docs/PRIVACY.md).
 

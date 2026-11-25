@@ -29,7 +29,7 @@ At the start of a dictation Utter reads the foreground app's process name and wi
 ## Your controls
 
 - **History retention**: forever, 24 hours, or never.
-- **Keep audio**: optional; when on, recordings are kept 14 days for playback and retry.
+- **Saved audio**: recordings are kept locally for 14 days by default so you can replay or retry them; turn this off in Settings, Privacy.
 - **No key**: with no API key Utter makes no network calls except model downloads.
 - **Delete**: remove single history items, clear all history, or delete downloaded models.
 - **Uninstall**: removes the app; delete `%APPDATA%\dev.utter.app` and the Credential Manager entry for a full clean-up.

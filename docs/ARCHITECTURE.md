@@ -9,16 +9,16 @@ Utter is a Tauri v2 app: a Rust core (`apps/desktop/src-tauri`) and a React + Ty
 | Module | Responsibility |
 |---|---|
 | `lib.rs`, `main.rs`, `app_state.rs` | App setup, plugins, shared state |
-| `commands.rs` | Tauri commands (the IPC surface) |
+| `commands.rs`, `commands_data.rs` | Tauri commands (the IPC surface): settings, API key, models, audio, shortcuts in `commands.rs`; history, dictionary, snippets, transforms, notes and stats in `commands_data.rs` |
 | `tray.rs`, `windows.rs` | Tray menu; hub and pill window creation |
-| `hotkeys/` | Global low-level keyboard hook (`hook_windows`), chord parsing (`chord`), and the matcher (`matcher`) for hold, double-tap and chord collisions. Pure matcher is unit-tested |
+| `hotkeys/` | `action` (the `Action` type and its string form, e.g. `transform:<id>`), global low-level keyboard hook (`hook_windows`), chord parsing (`chord`), and the matcher (`matcher`) for hold, double-tap and chord collisions. Pure matcher is unit-tested |
 | `audio/` | `cpal` capture, resample to 16 kHz mono, pre-roll buffer, RMS levels for the pill, gain normalization (`dsp`), WAV writing |
 | `stt/` | whisper.cpp engine wrapper (`engine`), model catalog (`catalog`), resumable verified downloads (`download`) |
 | `text/` | Pure text logic: local cleanup rules, spoken punctuation, backtrack, snippets, dictionary replacements, styles, artifact stripping (`[BLANK_AUDIO]`) |
 | `context/` | Foreground app capture (`foreground_windows`) and category classifier (`classify`, pure) |
 | `llm/` | Anthropic client (`client`), prompt builders (`prompts`), output extraction and validation (`output`) |
 | `insert/` | Clipboard save/restore (`clipboard_windows`), key simulation (`keys_windows`), insertion policy such as terminals and modifier release (`policy`) |
-| `pipeline/` | Session state machine (`session`) and routing decisions (`route`): what to do with a finished recording |
+| `pipeline/` | `machine` (pure recording state machine), `session` (the worker thread that runs each dictation end to end, saves audio), `route` (pure routing and `accept_ai_output`), `process` (transcript to final text: Claude call with local fallback, Whisper glue, silence check), `retry` (History retry from stored audio), `bindings` (settings and transforms to hotkey bindings), `e2e` (pipeline tests) |
 | `store/` | SQLite: history, dictionary, snippets, transforms, notes, usage, insights |
 | `settings.rs`, `secrets.rs`, `sounds.rs` | JSON settings; API key in Windows Credential Manager via `keyring`; start/stop sounds |
 
@@ -57,8 +57,9 @@ flowchart LR
   I --> D[Save history + stats]
 ```
 
-`Idle, Recording(mode), Transcribing, pre-pass, Claude, post-pass, Insert, Save, Idle`. Every stage emits `pill://state` events. Claude output is validated before use (`accept_ai_output`): answers instead of cleaned text, preambles, quotes and missing snippet placeholders are rejected and the local result is used instead.
+The recording state machine (`pipeline/machine.rs`) is pure: `step(state, input)` returns the next state and at most one command. States are `Idle` and `Recording { mode, locked }`; inputs are hotkey events, pill Stop/Cancel, and the 20-minute limit; commands are `Start`, `Lock`, `Finish` and `Discard`. The session worker (`pipeline/session.rs`) executes the commands, then runs the rest of the flow (transcribe, route, Claude or local text stage, insert, save history and stats) on its own thread and returns to idle.
 
+Every stage emits `pill://state` events. Claude output is validated before use (`accept_ai_output`): answers instead of cleaned text, preambles, quotes and missing snippet placeholders are rejected and the local result is used instead.
 Modes: `dictate`, `dictateEnhance`, `command`, `transform` (on selected text, captured with a simulated copy and the clipboard restored).
 
 ## IPC contract (summary)
