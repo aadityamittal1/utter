@@ -61,7 +61,11 @@ pub fn local_cleanup(raw: &str) -> String {
             }
         })
         .into_owned();
-    let t = t.trim_matches(|c: char| c == ' ' || c == '\n').to_string();
+    // A leading spoken-punctuation word must not leave orphan punctuation.
+    let t = t
+        .trim_start_matches(|c: char| matches!(c, ' ' | '\n' | ',' | '.' | ';' | ':' | '!' | '?'))
+        .trim_end_matches(|c: char| c == ' ' || c == '\n')
+        .to_string();
     if t.is_empty() {
         return String::new();
     }
@@ -146,6 +150,19 @@ mod tests {
     #[test]
     fn does_not_double_terminal_punctuation() {
         assert_eq!(local_cleanup("is this ok?"), "Is this ok?");
+    }
+
+    #[test]
+    fn leading_punctuation_word_leaves_no_orphan() {
+        assert_eq!(local_cleanup("comma hello"), "Hello.");
+        assert_eq!(local_cleanup("period"), "");
+    }
+
+    #[test]
+    fn non_ascii_is_safe() {
+        assert_eq!(local_cleanup("um café is nice"), "Café is nice.");
+        assert_eq!(local_cleanup("great 😀"), "Great 😀");
+        assert_eq!(local_cleanup("été comma ça va"), "Été, ça va.");
     }
 
     #[test]

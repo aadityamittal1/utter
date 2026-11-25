@@ -1,6 +1,7 @@
 //! Voice snippets: whole-utterance match, placeholder protection for the AI.
 
-use regex::{Captures, RegexBuilder};
+use once_cell::sync::Lazy;
+use regex::{Captures, Regex, RegexBuilder};
 
 use super::types::Snippet;
 
@@ -66,18 +67,34 @@ pub fn protect(text: &str, s: &[Snippet]) -> (String, Vec<(String, String)>) {
 }
 
 /// Substitute each placeholder with its expansion.
+/// Single pass: expansions are never re-scanned for placeholders.
 pub fn restore(text: &str, map: &[(String, String)]) -> String {
-    let mut out = text.to_string();
-    for (ph, exp) in map {
-        out = out.replace(ph.as_str(), exp);
-    }
-    out
+    PLACEHOLDER
+        .replace_all(text, |c: &Captures| {
+            match map.iter().find(|(ph, _)| ph == &c[0]) {
+                Some((_, exp)) => exp.clone(),
+                None => c[0].to_string(),
+            }
+        })
+        .into_owned()
 }
 
-/// True when every placeholder appears exactly once in `text`.
+#[allow(clippy::unwrap_used)] // static, known-valid pattern
+static PLACEHOLDER: Lazy<Regex> = Lazy::new(|| Regex::new(r"⟦S\d+⟧").unwrap());
+
+/// True when `text` contains a `⟦S<n>⟧` placeholder that is not in `map`.
+pub fn unknown_placeholders(text: &str, map: &[(String, String)]) -> bool {
+    PLACEHOLDER
+        .find_iter(text)
+        .any(|m| !map.iter().any(|(ph, _)| ph == m.as_str()))
+}
+
+/// True when every placeholder appears exactly once in `text` and no unknown
+/// placeholder was invented.
 pub fn placeholders_intact(text: &str, map: &[(String, String)]) -> bool {
     map.iter()
         .all(|(ph, _)| text.matches(ph.as_str()).count() == 1)
+        && !unknown_placeholders(text, map)
 }
 
 #[cfg(test)]
@@ -119,6 +136,19 @@ mod tests {
         assert_eq!(restore(&t, &map), "here is A and B");
         assert!(placeholders_intact(&t, &map));
         assert!(!placeholders_intact("here is ⟦S1⟧", &map));
+    }
+
+    #[test]
+    fn restore_is_single_pass_and_unknown_detected() {
+        let map = vec![
+            ("⟦S1⟧".to_string(), "see ⟦S2⟧".to_string()),
+            ("⟦S2⟧".to_string(), "B".to_string()),
+        ];
+        assert_eq!(restore("⟦S1⟧ ⟦S2⟧", &map), "see ⟦S2⟧ B");
+        assert!(!unknown_placeholders("⟦S1⟧ ⟦S2⟧", &map));
+        assert!(unknown_placeholders("⟦S1⟧ ⟦S9⟧ ⟦S2⟧", &map));
+        assert!(!placeholders_intact("⟦S1⟧ ⟦S9⟧ ⟦S2⟧", &map));
+        assert!(placeholders_intact("⟦S1⟧ and ⟦S2⟧", &map));
     }
 
     #[test]

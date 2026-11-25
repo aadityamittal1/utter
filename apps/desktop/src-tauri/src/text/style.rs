@@ -49,6 +49,15 @@ mod tests {
     }
 
     #[test]
+    fn non_ascii_is_safe() {
+        assert_eq!(apply_style_local("Café 😀.", StyleKind::Casual), "Café 😀");
+        assert_eq!(
+            apply_style_local("CAFÉ 😀.", StyleKind::VeryCasual),
+            "café 😀"
+        );
+    }
+
+    #[test]
     fn ellipsis_and_question_kept() {
         assert_eq!(apply_style_local("Hmm...", StyleKind::Casual), "Hmm...");
         assert_eq!(apply_style_local("Really?", StyleKind::Casual), "Really?");
