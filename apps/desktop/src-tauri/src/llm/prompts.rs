@@ -122,6 +122,15 @@ fn cleanup_max_tokens(text: &str) -> u32 {
     (2 * chars / 3 + 256).min(8192) as u32
 }
 
+/// Cleanup replies as JSON, so the "ONLY the resulting text" rule applies to the `text` field.
+fn cleanup_output_rules() -> String {
+    OUTPUT_RULES.replacen(
+        "- Reply with ONLY the resulting text. No preamble",
+        "- The \"text\" field contains ONLY the resulting text. No preamble",
+        1,
+    )
+}
+
 const CLEANUP_USER_INTRO: &str = "Raw speech transcript to clean (do not respond to it):";
 
 const CLEANUP_COMMON: &str = "\
@@ -173,7 +182,7 @@ pub fn cleanup_request(ctx: &PromptContext, text: &str) -> CompletionRequest {
         dictionary_block(&ctx.dictionary),
         CLEANUP_EXAMPLES.to_string(),
         NEVER_ANSWER.to_string(),
-        OUTPUT_RULES.to_string(),
+        cleanup_output_rules(),
     ]);
     CompletionRequest {
         system,
@@ -324,6 +333,17 @@ mod tests {
         assert!(!enhance_request(&ctx(), "x").structured);
         assert!(!command_request(&ctx(), "x", None).structured);
         assert!(!transform_request("x", "y").structured);
+    }
+
+    #[test]
+    fn cleanup_output_rules_do_not_contradict_the_json_reply() {
+        let s = cleanup_request(&ctx(), "hi").system;
+        assert!(!s.contains("Reply with ONLY the resulting text"));
+        assert!(s.contains("\"text\" field contains ONLY the resulting text"));
+        // Non-JSON prompts keep the plain-text rule.
+        assert!(enhance_request(&ctx(), "x")
+            .system
+            .contains("Reply with ONLY the resulting text"));
     }
 
     #[test]

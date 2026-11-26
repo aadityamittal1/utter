@@ -574,6 +574,9 @@ mod tests {
                             &[],
                         );
                         println!("[{cat:?}] ai={} {said:?} -> {:?}", r.used_ai, r.text);
+                        if !r.used_ai {
+                            failures.push(format!("{said:?}: fell back to local ({:?})", r.text));
+                        }
                         if !pass {
                             failures.push(format!("{said:?} -> {:?}", r.text));
                         }
