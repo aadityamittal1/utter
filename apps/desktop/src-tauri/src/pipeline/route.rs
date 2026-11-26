@@ -93,10 +93,17 @@ fn looks_like_question(input: &str) -> bool {
         return true;
     }
     let bare = t.trim_end_matches(|c: char| !c.is_alphanumeric() && !is_unspaced_script(c));
-    if bare.ends_with(['\u{5417}', '\u{5462}', '\u{304b}'])
-        || ["什么", "怎么", "哪", "谁", "几"]
-            .iter()
-            .any(|w| bare.contains(w))
+    if bare.ends_with(['\u{5417}', '\u{5462}', '\u{304b}']) {
+        return true;
+    }
+    // Statement uses of the interrogative characters.
+    let mut cjk = bare.to_string();
+    for w in ["几乎", "哪怕", "没什么", "什么都", "谁知道"] {
+        cjk = cjk.replace(w, "");
+    }
+    if ["什么", "怎么", "哪", "谁", "几"]
+        .iter()
+        .any(|w| cjk.contains(w))
     {
         return true;
     }
@@ -115,7 +122,13 @@ fn looks_like_question(input: &str) -> bool {
     if WH_WORDS.contains(&w1) {
         return w2.is_some_and(|w| AUX_WORDS.contains(&w) || w == "'s");
     }
-    AUX_WORDS.contains(&w1) && w2.is_some_and(|w| SUBJECT_WORDS.contains(&w))
+    // "do it before you leave", "have it ready", "do my taxes" are imperatives/statements.
+    let weak_aux = matches!(w1, "do" | "have");
+    AUX_WORDS.contains(&w1)
+        && w2.is_some_and(|w| {
+            SUBJECT_WORDS.contains(&w)
+                && !(weak_aux && matches!(w, "my" | "your" | "this" | "that" | "it"))
+        })
 }
 
 const LIGHT_MIN_OVERLAP: f64 = 0.8;
@@ -382,23 +395,72 @@ impl Reject {
     }
 }
 
+/// A '.' that ends a single-letter abbreviation ("a.m.", "U.S.", "e.g.").
+fn ends_abbreviation(chars: &[(usize, char)], k: usize) -> bool {
+    let letter = k.checked_sub(1).is_some_and(|j| chars[j].1.is_alphabetic());
+    let before = k.checked_sub(2).map(|j| chars[j].1);
+    letter && before.is_none_or(|c| c.is_whitespace() || c == '.')
+}
+
+/// Sentence pieces of `s`: split on ! ? newline ellipsis, on ':' and spaced '-' / em dashes
+/// followed by whitespace, and on '.' that ends a word (not "a.m.", "U.S.", "3.5", URLs).
+fn split_sentences(s: &str) -> Vec<&str> {
+    let chars: Vec<(usize, char)> = s.char_indices().collect();
+    let mut parts = Vec::new();
+    let mut start = 0;
+    for (k, &(i, c)) in chars.iter().enumerate() {
+        let prev = k.checked_sub(1).map(|j| chars[j].1);
+        let next = chars.get(k + 1).map(|x| x.1);
+        let boundary = match c {
+            '!' | '?' | '\n' | '\u{2026}' | '\u{3002}' | '\u{ff01}' | '\u{ff1f}' => true,
+            ':' => next.is_none_or(char::is_whitespace),
+            '-' | '\u{2014}' => {
+                prev.is_some_and(char::is_whitespace) && next.is_some_and(char::is_whitespace)
+            }
+            '.' => next.is_none_or(char::is_whitespace) && !ends_abbreviation(&chars, k),
+            _ => false,
+        };
+        if boundary {
+            parts.push(&s[start..i]);
+            start = i + c.len_utf8();
+        }
+    }
+    parts.push(&s[start..]);
+    parts
+}
+
 /// Echo + answer: the earlier sentences already cover the speaker's words, and the last
-/// sentence is at least half new words (e.g. "Translate hello into Spanish. Hola.").
+/// sentence is at least half new words (e.g. "Translate hello into Spanish. Hola."). It must
+/// carry 2+ new words, or nothing of the speaker's beyond words repeated from the echo, so a
+/// lone normalised word ("Thanks." for "thank") is not enough.
 fn answer_after_echo(out: &str, in_words: &[String], own: &Own<'_>) -> bool {
-    let sentences: Vec<Vec<String>> = out
-        .split(['.', '!', '?', '\u{3002}', '\u{ff01}', '\u{ff1f}', '\n'])
+    let sentences: Vec<Vec<String>> = split_sentences(out)
+        .into_iter()
         .map(words_of)
         .filter(|w| !w.is_empty())
         .collect();
     let Some((last, earlier)) = sentences.split_last().filter(|(_, e)| !e.is_empty()) else {
         return false;
     };
-    let new = last.iter().filter(|w| !own.has(w)).count();
+    let covered: std::collections::HashSet<&str> =
+        earlier.iter().flatten().map(String::as_str).collect();
+    let is_own = |w: &String| {
+        own.has(w)
+            || is_digit_token(w)
+            || w.strip_suffix('s').is_some_and(|b| own.has(b))
+            || own.has(&format!("{w}s"))
+    };
+    let new = last.iter().filter(|w| !is_own(w)).count();
     if new == 0 || new * 2 < last.len() {
         return false;
     }
-    let covered: std::collections::HashSet<&str> =
-        earlier.iter().flatten().map(String::as_str).collect();
+    let fresh_own = last
+        .iter()
+        .filter(|w| is_own(w) && !covered.contains(w.as_str()))
+        .count();
+    if new < 2 && fresh_own > 0 {
+        return false;
+    }
     let hit = in_words
         .iter()
         .filter(|w| covered.contains(w.as_str()))
@@ -1146,6 +1208,107 @@ mod tests {
             "Coffee at 3.",
             CleanupLevel::Light
         ));
+    }
+
+    #[test]
+    fn abbreviations_do_not_split_sentences() {
+        let l = CleanupLevel::Light;
+        assert!(ok(
+            "please schedule the call with the client for tomorrow morning at nine am",
+            "Please schedule the call with the client for tomorrow morning at 9 a.m.",
+            l
+        ));
+        assert!(ok(
+            "call me tomorrow at five pm",
+            "Call me tomorrow at 5 p.m.",
+            l
+        ));
+        assert!(ok(
+            "we have offices in the u s",
+            "We have offices in the U.S.",
+            l
+        ));
+        assert!(ok(
+            "see me at nine am thanks",
+            "See me at 9 a.m. Thanks.",
+            l
+        ));
+        // Other sentence boundaries still count.
+        assert!(!ok(
+            "translate hello into spanish",
+            "Translate hello into Spanish: Hola",
+            l
+        ));
+        assert!(!ok(
+            "translate hello into spanish",
+            "Translate hello into Spanish\u{2026} Hola",
+            l
+        ));
+        assert!(!ok(
+            "translate hello into spanish",
+            "Translate hello into Spanish - Hola",
+            l
+        ));
+    }
+
+    #[test]
+    fn trailing_sentence_rule_ignores_plurals_and_numbers() {
+        let l = CleanupLevel::Light;
+        assert!(ok(
+            "send it this afternoon thank",
+            "Send it this afternoon. Thanks.",
+            l
+        ));
+        // A single fresh word that repeats only the echo is still an answer.
+        assert!(!ok(
+            "write me a haiku about rain",
+            "Write me a haiku about rain. Rain falls.",
+            CleanupLevel::Medium
+        ));
+        assert!(!ok(
+            "say hello in french",
+            "Say hello in French. Bonjour.",
+            CleanupLevel::Medium
+        ));
+    }
+
+    #[test]
+    fn do_and_have_with_it_my_this_are_statements() {
+        for t in [
+            "do it before you leave",
+            "do that later",
+            "do my taxes",
+            "do this now",
+            "have it ready by friday",
+        ] {
+            assert!(!looks_like_question(t), "{t}");
+        }
+        for t in [
+            "do you know",
+            "do we need it",
+            "do they care",
+            "have you seen it",
+            "is this working",
+            "can it wait",
+        ] {
+            assert!(looks_like_question(t), "{t}");
+        }
+    }
+
+    #[test]
+    fn cjk_statement_compounds_are_not_questions() {
+        for t in [
+            "他几乎每天都来",
+            "哪怕下雨也要去",
+            "没什么问题",
+            "什么都可以",
+            "我不知道谁知道这件事",
+        ] {
+            assert!(!looks_like_question(t), "{t}");
+        }
+        for t in ["你在干什么", "法国的首都是哪里", "谁来了"] {
+            assert!(looks_like_question(t), "{t}");
+        }
     }
 
     #[test]
