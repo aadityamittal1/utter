@@ -72,24 +72,50 @@ pub fn plan_route(
     Route::Claude(AiKind::Cleanup)
 }
 
-const QUESTION_WORDS: &[&str] = &[
-    "what", "why", "how", "when", "where", "who", "which", "can", "could", "would", "should", "is",
-    "are", "do", "does", "did", "will",
+const WH_WORDS: &[&str] = &[
+    "what", "why", "how", "when", "where", "who", "which", "whose",
+];
+const AUX_WORDS: &[&str] = &[
+    "is", "are", "was", "were", "do", "does", "did", "can", "could", "would", "should", "will",
+    "has", "have", "may", "shall",
+];
+const SUBJECT_WORDS: &[&str] = &[
+    "you", "i", "we", "they", "he", "she", "it", "this", "that", "there", "your", "my",
 ];
 
-/// True when the dictated text is phrased as a question.
+/// True when the dictated text is phrased as a question: it ends with a question mark, or it
+/// opens like one (wh-word + auxiliary, wh-word + 's, or auxiliary + subject), or it holds a
+/// Chinese/Japanese interrogative. Plain statements that merely start with such a word
+/// ("do not forget the milk", "when you get home call me") are not questions.
 fn looks_like_question(input: &str) -> bool {
     let t = input.trim();
-    if t.ends_with(['?', '？']) {
+    if t.ends_with(['?', '\u{ff1f}']) {
         return true;
     }
-    let first: String = t
-        .chars()
-        .skip_while(|c| !c.is_alphabetic())
-        .take_while(|c| c.is_alphabetic())
-        .collect::<String>()
-        .to_lowercase();
-    QUESTION_WORDS.contains(&first.as_str())
+    let bare = t.trim_end_matches(|c: char| !c.is_alphanumeric() && !is_unspaced_script(c));
+    if bare.ends_with(['\u{5417}', '\u{5462}', '\u{304b}'])
+        || ["什么", "怎么", "哪", "谁", "几"]
+            .iter()
+            .any(|w| bare.contains(w))
+    {
+        return true;
+    }
+    let lower = t.to_lowercase().replace('\u{2019}', "'");
+    let mut words = lower
+        .split(|c: char| !c.is_alphabetic() && c != '\'')
+        .filter(|w| !w.is_empty());
+    let (Some(w1), w2) = (words.next(), words.next()) else {
+        return false;
+    };
+    if let Some(base) = w1.strip_suffix("'s") {
+        if WH_WORDS.contains(&base) {
+            return true;
+        }
+    }
+    if WH_WORDS.contains(&w1) {
+        return w2.is_some_and(|w| AUX_WORDS.contains(&w) || w == "'s");
+    }
+    AUX_WORDS.contains(&w1) && w2.is_some_and(|w| SUBJECT_WORDS.contains(&w))
 }
 
 const LIGHT_MIN_OVERLAP: f64 = 0.8;
@@ -337,6 +363,7 @@ enum Reject {
     Growth,
     Numbers,
     AnswerAfterQuestion,
+    AnswerAfterEcho,
     QuestionLost,
 }
 
@@ -349,9 +376,34 @@ impl Reject {
             Reject::Growth => "growth",
             Reject::Numbers => "numbers",
             Reject::AnswerAfterQuestion => "answer-after-question",
+            Reject::AnswerAfterEcho => "answer-after-echo",
             Reject::QuestionLost => "question-lost",
         }
     }
+}
+
+/// Echo + answer: the earlier sentences already cover the speaker's words, and the last
+/// sentence is at least half new words (e.g. "Translate hello into Spanish. Hola.").
+fn answer_after_echo(out: &str, in_words: &[String], own: &Own<'_>) -> bool {
+    let sentences: Vec<Vec<String>> = out
+        .split(['.', '!', '?', '\u{3002}', '\u{ff01}', '\u{ff1f}', '\n'])
+        .map(words_of)
+        .filter(|w| !w.is_empty())
+        .collect();
+    let Some((last, earlier)) = sentences.split_last().filter(|(_, e)| !e.is_empty()) else {
+        return false;
+    };
+    let new = last.iter().filter(|w| !own.has(w)).count();
+    if new == 0 || new * 2 < last.len() {
+        return false;
+    }
+    let covered: std::collections::HashSet<&str> =
+        earlier.iter().flatten().map(String::as_str).collect();
+    let hit = in_words
+        .iter()
+        .filter(|w| covered.contains(w.as_str()))
+        .count();
+    hit as f64 >= 0.8 * in_words.len() as f64
 }
 
 /// The cleanup safety net: does `out` read as the speaker's own words, cleaned?
@@ -395,6 +447,9 @@ fn check_cleanup(
         }
         if new as f64 > new_floor.max(new_share * in_words.len() as f64) + 1e-9 {
             return Err(Reject::NewWords);
+        }
+        if answer_after_echo(out, &in_words, &own) {
+            return Err(Reject::AnswerAfterEcho);
         }
         // A cleanup only removes or re-spells words; it never makes the text longer.
         if out_words.len() > in_words.len() + extra_words {
@@ -998,6 +1053,99 @@ mod tests {
                 assert!(ok(said, cleaned, l), "{said} -> {cleaned}");
             }
         }
+    }
+
+    #[test]
+    fn statements_that_start_with_a_question_word_are_not_questions() {
+        for t in [
+            "do not forget the milk",
+            "do the dishes before you leave",
+            "when you get home call me",
+            "how it works is up to you",
+        ] {
+            assert!(!looks_like_question(t), "{t}");
+        }
+        for t in [
+            "what is the capital of france",
+            "what's the capital of france",
+            "can you help me",
+            "do you know",
+            "how's it going",
+            "is this working",
+            "where did it go",
+        ] {
+            assert!(looks_like_question(t), "{t}");
+        }
+        let l = CleanupLevel::Light;
+        assert!(ok("do not forget the milk", "Do not forget the milk.", l));
+        assert!(ok(
+            "do the dishes before you leave",
+            "Do the dishes before you leave.",
+            l
+        ));
+        assert!(ok(
+            "when you get home call me",
+            "When you get home, call me.",
+            l
+        ));
+        assert!(ok(
+            "how it works is up to you",
+            "How it works is up to you.",
+            l
+        ));
+    }
+
+    #[test]
+    fn cjk_interrogatives_are_questions() {
+        assert!(looks_like_question("你吃饭了吗"));
+        assert!(looks_like_question("你在干什么"));
+        assert!(looks_like_question("これは何ですか"));
+        assert!(!looks_like_question("我想要一杯咖啡"));
+        assert!(!ok(
+            "请问中华人民共和国的首都是哪个城市",
+            "中华人民共和国的首都是北京。",
+            CleanupLevel::Light
+        ));
+        assert!(!ok(
+            "法国的首都是哪里",
+            "法国的首都是巴黎。",
+            CleanupLevel::Medium
+        ));
+        assert!(ok(
+            "法国的首都是哪里",
+            "法国的首都是哪里？",
+            CleanupLevel::Medium
+        ));
+    }
+
+    #[test]
+    fn a_trailing_answer_sentence_after_the_echo_is_rejected() {
+        assert!(!ok(
+            "translate hello into spanish",
+            "Translate hello into Spanish. Hola.",
+            CleanupLevel::Light
+        ));
+        assert!(!ok(
+            "say hello in french",
+            "Say hello in French. Bonjour.",
+            CleanupLevel::Light
+        ));
+        assert!(!ok(
+            "write me a haiku about rain",
+            "Write me a haiku about rain. Rain falls.",
+            CleanupLevel::Medium
+        ));
+        // Controls.
+        assert!(ok(
+            "hi sam see you tomorrow thanks",
+            "Hi Sam, see you tomorrow. Thanks!",
+            CleanupLevel::Light
+        ));
+        assert!(ok(
+            "coffee at two actually three",
+            "Coffee at 3.",
+            CleanupLevel::Light
+        ));
     }
 
     #[test]
