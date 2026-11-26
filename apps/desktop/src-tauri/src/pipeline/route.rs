@@ -92,10 +92,101 @@ fn looks_like_question(input: &str) -> bool {
     QUESTION_WORDS.contains(&first.as_str())
 }
 
+const LIGHT_MIN_OVERLAP: f64 = 0.8;
+const MEDIUM_MIN_OVERLAP: f64 = 0.6;
+
+const NUMBER_WORDS: &[&str] = &[
+    "zero",
+    "one",
+    "two",
+    "three",
+    "four",
+    "five",
+    "six",
+    "seven",
+    "eight",
+    "nine",
+    "ten",
+    "eleven",
+    "twelve",
+    "thirteen",
+    "fourteen",
+    "fifteen",
+    "sixteen",
+    "seventeen",
+    "eighteen",
+    "nineteen",
+    "twenty",
+    "thirty",
+    "forty",
+    "fifty",
+    "sixty",
+    "seventy",
+    "eighty",
+    "ninety",
+    "hundred",
+    "thousand",
+    "million",
+    "billion",
+    "first",
+    "second",
+    "third",
+    "half",
+    "quarter",
+    "dozen",
+    "once",
+    "twice",
+];
+
+/// Lowercase alphanumeric words of `s`. Snippet placeholders (`⟦S1⟧`) are dropped and
+/// apostrophes removed ("let's" -> "lets"), so contractions compare equal.
+fn words_of(s: &str) -> Vec<String> {
+    static PLACEHOLDER: once_cell::sync::Lazy<regex::Regex> =
+        once_cell::sync::Lazy::new(|| regex::Regex::new(r"⟦S\d+⟧").expect("valid regex"));
+    let s = PLACEHOLDER.replace_all(s, " ").to_lowercase();
+    let s: String = s
+        .chars()
+        .filter(|c| !matches!(c, '\'' | '\u{2019}'))
+        .collect();
+    s.split(|c: char| !c.is_alphanumeric())
+        .filter(|w| !w.is_empty())
+        .map(str::to_string)
+        .collect()
+}
+
+fn is_number_token(w: &str) -> bool {
+    w.chars().all(|c| c.is_ascii_digit()) || NUMBER_WORDS.contains(&w)
+}
+
+/// Share of the output's words that also occur in the input. A cleanup only re-spells,
+/// removes or re-punctuates the speaker's own words; an answer to a dictated instruction
+/// is made of new words. Number tokens match when the input has any number token
+/// ("two" -> "2"), which keeps this simple.
+fn overlap_share(input: &str, output: &str) -> f64 {
+    let in_words = words_of(input);
+    let out_words = words_of(output);
+    if out_words.is_empty() {
+        return 1.0;
+    }
+    let in_set: std::collections::HashSet<&str> = in_words.iter().map(String::as_str).collect();
+    let in_has_number = in_words.iter().any(|w| is_number_token(w));
+    let matched = out_words
+        .iter()
+        .filter(|w| in_set.contains(w.as_str()) || (in_has_number && is_number_token(w)))
+        .count();
+    matched as f64 / out_words.len() as f64
+}
+
 /// Is the model's output an acceptable replacement for `input`? `input` is the text that was
 /// sent (snippet placeholders included); `map` the placeholder table. A rejection means "fall
 /// back to local cleanup".
-pub fn accept_ai_output(input: &str, output: &str, kind: AiKind, map: &[(String, String)]) -> bool {
+pub fn accept_ai_output(
+    input: &str,
+    output: &str,
+    kind: AiKind,
+    level: CleanupLevel,
+    map: &[(String, String)],
+) -> bool {
     let out = output.trim();
     if out.is_empty() || !placeholders_intact(out, map) {
         return false;
@@ -103,7 +194,15 @@ pub fn accept_ai_output(input: &str, output: &str, kind: AiKind, map: &[(String,
     let (in_len, out_len) = (input.trim().chars().count(), out.chars().count());
     match kind {
         AiKind::Cleanup => {
-            if out_len as f64 > 1.5 * in_len as f64 + 40.0 {
+            let (ratio, slack, min_overlap) = match level {
+                CleanupLevel::Medium => (1.5, 40.0, MEDIUM_MIN_OVERLAP),
+                CleanupLevel::Light | CleanupLevel::Off => (1.25, 30.0, LIGHT_MIN_OVERLAP),
+            };
+            if out_len as f64 > ratio * in_len as f64 + slack {
+                return false;
+            }
+            // The safety net against answers: a cleanup reuses the speaker's own words.
+            if overlap_share(input, out) < min_overlap {
                 return false;
             }
             // A dictated question must come back as a question, not an answer.
@@ -306,21 +405,127 @@ mod tests {
             "what's the capital of france",
             "The capital of France is Paris.",
             AiKind::Cleanup,
+            CleanupLevel::Light,
             &[]
         ));
         assert!(accept_ai_output(
             "what's the capital of france",
             "What's the capital of France?",
             AiKind::Cleanup,
+            CleanupLevel::Light,
             &[]
         ));
         assert!(!accept_ai_output(
             "is this working",
             "Yes, it is working.",
             AiKind::Cleanup,
+            CleanupLevel::Light,
             &[]
         ));
-        assert!(!accept_ai_output("fine?", "Fine.", AiKind::Cleanup, &[]));
+        assert!(!accept_ai_output(
+            "fine?",
+            "Fine.",
+            AiKind::Cleanup,
+            CleanupLevel::Light,
+            &[]
+        ));
+    }
+
+    fn ok(input: &str, output: &str, level: CleanupLevel) -> bool {
+        accept_ai_output(input, output, AiKind::Cleanup, level, &[])
+    }
+
+    #[test]
+    fn overlap_guard_accepts_legitimate_cleanups() {
+        let l = CleanupLevel::Light;
+        assert!(ok(
+            "um so i think uh we should go actually no lets stay",
+            "So I think we should stay.",
+            l
+        ));
+        assert!(ok("coffee at two actually three", "Coffee at 3.", l));
+        assert!(ok(
+            "hey can you send me the report by friday thanks",
+            "Hey, can you send me the report by Friday? Thanks.",
+            l
+        ));
+        // The cleaned form of instruction-style prompts is exactly what we want.
+        assert!(ok(
+            "write me a short poem about the ocean",
+            "Write me a short poem about the ocean.",
+            l
+        ));
+        assert!(ok(
+            "explain what a hash map is",
+            "Explain what a hash map is.",
+            l
+        ));
+        assert!(ok(
+            "create a python function that reverses a string",
+            "Create a Python function that reverses a string.",
+            l
+        ));
+        assert!(ok(
+            "give me three ideas for a birthday party",
+            "Give me three ideas for a birthday party.",
+            l
+        ));
+        // Spoken punctuation and structure words are removed by cleanup.
+        assert!(ok(
+            "hello comma how are you question mark new line fine",
+            "Hello, how are you?\nFine.",
+            l
+        ));
+    }
+
+    #[test]
+    fn overlap_guard_rejects_answers_to_instructions() {
+        let l = CleanupLevel::Light;
+        assert!(!ok(
+            "write me a short poem about the ocean",
+            "Waves crash softly on the shore, / The ocean whispers evermore.",
+            l
+        ));
+        assert!(!ok(
+            "explain what a hash map is",
+            "A hash map is a data structure that maps keys to values using a hash function.",
+            l
+        ));
+        assert!(!ok(
+            "create a python function that reverses a string",
+            "def reverse(s):\n    return s[::-1]",
+            l
+        ));
+        assert!(!ok(
+            "give me three ideas for a birthday party",
+            "1. Picnic in the park\n2. Karaoke night\n3. Escape room",
+            l
+        ));
+    }
+
+    #[test]
+    fn overlap_guard_is_looser_for_medium_but_still_rejects_answers() {
+        // 6 of 9 output words come from the input: fails Light (0.8), passes Medium (0.6).
+        let input = "so basically we need to move the launch to next week";
+        let out = "We need to postpone the launch by a week.";
+        assert!(!ok(input, out, CleanupLevel::Light));
+        assert!(ok(input, out, CleanupLevel::Medium));
+        assert!(!ok(
+            "explain what a hash map is",
+            "A hash map is a data structure that maps keys to values using a hash function.",
+            CleanupLevel::Medium
+        ));
+    }
+
+    #[test]
+    fn light_length_cap_is_tight() {
+        // 20-char input: cap is 1.25 * 20 + 30 = 55 chars.
+        let input = "ship it on thursday!";
+        let within = "ship it on thursday ship it on thursday ship it"; // 47 chars, all words overlap
+        let over = "ship it on thursday ship it on thursday ship it on thursday ship it"; // 67
+        assert!(ok(input, within, CleanupLevel::Light));
+        assert!(!ok(input, over, CleanupLevel::Light));
+        assert!(ok(input, over, CleanupLevel::Medium)); // 1.5 * 20 + 40 = 70
     }
 
     #[test]
@@ -329,21 +534,46 @@ mod tests {
             "um so I think we should ship on thursday",
             "I think we should ship on Thursday.",
             AiKind::Cleanup,
+            CleanupLevel::Light,
             &[]
         ));
     }
 
     #[test]
     fn rejects_empty_and_overlong_cleanup() {
-        assert!(!accept_ai_output("hello", "   ", AiKind::Cleanup, &[]));
+        assert!(!accept_ai_output(
+            "hello",
+            "   ",
+            AiKind::Cleanup,
+            CleanupLevel::Light,
+            &[]
+        ));
         let input = "ship it on thursday";
         let long =
             "Here is a much longer reply that expands on the input considerably and keeps going.";
-        assert!(!accept_ai_output(input, long, AiKind::Cleanup, &[]));
+        assert!(!accept_ai_output(
+            input,
+            long,
+            AiKind::Cleanup,
+            CleanupLevel::Light,
+            &[]
+        ));
         // Same length budget is fine for enhance (4x + 400).
-        assert!(accept_ai_output(input, long, AiKind::Enhance, &[]));
+        assert!(accept_ai_output(
+            input,
+            long,
+            AiKind::Enhance,
+            CleanupLevel::Light,
+            &[]
+        ));
         let huge = "x".repeat(4 * input.len() + 401);
-        assert!(!accept_ai_output(input, &huge, AiKind::Enhance, &[]));
+        assert!(!accept_ai_output(
+            input,
+            &huge,
+            AiKind::Enhance,
+            CleanupLevel::Light,
+            &[]
+        ));
     }
 
     #[test]
@@ -355,24 +585,28 @@ mod tests {
             &prot,
             "Send it to ⟦S1⟧, thanks.",
             AiKind::Cleanup,
+            CleanupLevel::Light,
             &map
         ));
         assert!(!accept_ai_output(
             &prot,
             "Send it to my email, thanks.",
             AiKind::Cleanup,
+            CleanupLevel::Light,
             &map
         ));
         assert!(!accept_ai_output(
             &prot,
             "Send it to ⟦S1⟧ ⟦S1⟧, thanks.",
             AiKind::Cleanup,
+            CleanupLevel::Light,
             &map
         ));
         assert!(!accept_ai_output(
             &prot,
             "Send it to ⟦S1⟧ ⟦S2⟧.",
             AiKind::Cleanup,
+            CleanupLevel::Light,
             &map
         ));
     }
@@ -383,12 +617,14 @@ mod tests {
             "make it shorter",
             "Short.",
             AiKind::Command,
+            CleanupLevel::Light,
             &[]
         ));
         assert!(!accept_ai_output(
             "make it shorter",
             "",
             AiKind::Command,
+            CleanupLevel::Light,
             &[]
         ));
     }
