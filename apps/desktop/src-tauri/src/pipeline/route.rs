@@ -162,13 +162,18 @@ fn is_number_token(w: &str) -> bool {
 /// removes or re-punctuates the speaker's own words; an answer to a dictated instruction
 /// is made of new words. Number tokens match when the input has any number token
 /// ("two" -> "2"), which keeps this simple.
-fn overlap_share(input: &str, output: &str) -> f64 {
+fn overlap_share(input: &str, output: &str, dict_words: &[String]) -> f64 {
     let in_words = words_of(input);
     let out_words = words_of(output);
     if out_words.is_empty() {
         return 1.0;
     }
-    let in_set: std::collections::HashSet<&str> = in_words.iter().map(String::as_str).collect();
+    let dict_tokens: Vec<String> = dict_words.iter().flat_map(|w| words_of(w)).collect();
+    let in_set: std::collections::HashSet<&str> = in_words
+        .iter()
+        .chain(dict_tokens.iter())
+        .map(String::as_str)
+        .collect();
     let in_has_number = in_words.iter().any(|w| is_number_token(w));
     let matched = out_words
         .iter()
@@ -187,6 +192,20 @@ pub fn accept_ai_output(
     level: CleanupLevel,
     map: &[(String, String)],
 ) -> bool {
+    accept_ai_output_with_dict(input, output, kind, level, map, &[])
+}
+
+/// Like [`accept_ai_output`], but tokens of the user's dictionary words count as present in
+/// the input for the cleanup overlap check (a corrected spelling such as "Kubernetes" for
+/// "cooper netties" is the speaker's own word).
+pub fn accept_ai_output_with_dict(
+    input: &str,
+    output: &str,
+    kind: AiKind,
+    level: CleanupLevel,
+    map: &[(String, String)],
+    dict_words: &[String],
+) -> bool {
     let out = output.trim();
     if out.is_empty() || !placeholders_intact(out, map) {
         return false;
@@ -202,7 +221,7 @@ pub fn accept_ai_output(
                 return false;
             }
             // The safety net against answers: a cleanup reuses the speaker's own words.
-            if overlap_share(input, out) < min_overlap {
+            if overlap_share(input, out, dict_words) < min_overlap {
                 return false;
             }
             // A dictated question must come back as a question, not an answer.
@@ -433,6 +452,48 @@ mod tests {
 
     fn ok(input: &str, output: &str, level: CleanupLevel) -> bool {
         accept_ai_output(input, output, AiKind::Cleanup, level, &[])
+    }
+
+    #[test]
+    fn dictionary_words_count_as_overlap() {
+        let (input, output) = ("cooper netties", "Kubernetes.");
+        let l = CleanupLevel::Light;
+        // Control: without the dictionary entry the corrected word is judged by the normal rule.
+        assert!(!ok(input, output, l));
+        assert!(!accept_ai_output_with_dict(
+            input,
+            output,
+            AiKind::Cleanup,
+            l,
+            &[],
+            &["Aaditya".to_string()]
+        ));
+        assert!(accept_ai_output_with_dict(
+            input,
+            output,
+            AiKind::Cleanup,
+            l,
+            &[],
+            &["Kubernetes".to_string()]
+        ));
+        // Multi-token dictionary words match per token.
+        assert!(accept_ai_output_with_dict(
+            "open ai is hiring",
+            "OpenAI Inc is hiring.",
+            AiKind::Cleanup,
+            l,
+            &[],
+            &["Inc OpenAI".to_string()]
+        ));
+        // Dictionary words do not excuse an answer.
+        assert!(!accept_ai_output_with_dict(
+            "what is kubernetes",
+            "Kubernetes is a container orchestration system that automates deployment.",
+            AiKind::Cleanup,
+            l,
+            &[],
+            &["Kubernetes".to_string()]
+        ));
     }
 
     #[test]

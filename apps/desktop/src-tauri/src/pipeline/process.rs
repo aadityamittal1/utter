@@ -1,6 +1,6 @@
 //! Transcript -> final text: routing, the Claude call with local fallback, and Whisper glue.
 
-use super::route::{accept_ai_output, finalize_local, plan_route, AiKind, Mode, Route};
+use super::route::{accept_ai_output_with_dict, finalize_local, plan_route, AiKind, Mode, Route};
 use crate::audio::dsp;
 use crate::llm::client::{ClaudeClient, Completion, CompletionRequest};
 use crate::llm::output::{extract_output, extract_output_for};
@@ -168,7 +168,14 @@ pub async fn run_text_stage(inp: &TextInput<'_>) -> TextOutcome {
             match client(inp, key).complete(&req).await {
                 Ok(c) => {
                     let out = extract_output_for(&c.text, &prot);
-                    if accept_ai_output(&prot, &out, kind, inp.settings.cleanup_level, &map) {
+                    if accept_ai_output_with_dict(
+                        &prot,
+                        &out,
+                        kind,
+                        inp.settings.cleanup_level,
+                        &map,
+                        &ctx.dictionary,
+                    ) {
                         let text = apply_replacements(&restore(&out, &map), inp.dict);
                         TextOutcome::Text(TextResult {
                             raw,
@@ -245,6 +252,7 @@ pub fn transcribe(
 
 #[cfg(test)]
 mod tests {
+    use super::super::route::accept_ai_output;
     use super::*;
 
     fn input<'a>(
