@@ -518,6 +518,12 @@ fn retry_into_focus(st: &Arc<AppState>, id: i64) {
     }
 }
 
+/// Windows accent colour, text scale and backdrop for the UI (see `system`).
+#[tauri::command]
+pub fn get_system_appearance() -> crate::system::SystemAppearance {
+    crate::system::current()
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;

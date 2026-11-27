@@ -18,6 +18,15 @@ pub enum Theme {
     Dark,
 }
 
+/// Where the UI accent colour comes from: Utter's ember or the Windows accent.
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Default, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub enum AccentSource {
+    #[default]
+    Utter,
+    Windows,
+}
+
 #[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
 #[serde(rename_all = "camelCase", default)]
 pub struct Settings {
@@ -40,6 +49,7 @@ pub struct Settings {
     pub show_pill: bool,
     pub launch_at_login: bool,
     pub theme: Theme,
+    pub accent_source: AccentSource,
     pub history_retention: Retention,
     pub keep_audio: bool,
     pub category_rules: Vec<CategoryRule>,
@@ -94,6 +104,7 @@ impl Default for Settings {
             show_pill: true,
             launch_at_login: true,
             theme: Theme::System,
+            accent_source: AccentSource::Utter,
             history_retention: Retention::Forever,
             keep_audio: true,
             category_rules: default_rules(),
@@ -391,5 +402,24 @@ mod tests {
         s.shortcuts.clear();
         s.reset_shortcuts();
         assert_eq!(s.shortcuts, default_shortcuts());
+    }
+
+    #[test]
+    fn accent_source_defaults_to_utter_and_is_camel_case() {
+        assert_eq!(Settings::default().accent_source, AccentSource::Utter);
+        let v = serde_json::to_value(Settings::default()).unwrap();
+        assert_eq!(v["accentSource"], "utter");
+        let s: Settings = serde_json::from_str(r#"{"accentSource":"windows"}"#).unwrap();
+        assert_eq!(s.accent_source, AccentSource::Windows);
+    }
+
+    #[test]
+    fn unknown_accent_source_falls_back_leniently() {
+        let dir = tempfile::tempdir().unwrap();
+        let path = dir.path().join("settings.json");
+        std::fs::write(&path, r#"{"accentSource":"rainbow","onboarded":true}"#).unwrap();
+        let s = load(&path);
+        assert_eq!(s.accent_source, AccentSource::Utter);
+        assert!(s.onboarded);
     }
 }
