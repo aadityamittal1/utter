@@ -95,11 +95,11 @@ export function ShortcutRecorder({ value, onChange, label }: { value: string | u
       onClick={() => setRecording((r) => !r)}
       onBlur={() => setRecording(false)}
       className={cn(
-        "inline-flex h-9 min-w-[150px] items-center justify-between gap-3 rounded-control border bg-surface px-3 transition-colors",
-        recording ? "border-ember" : "border-line hover:border-line-strong",
+        "inline-flex h-10 min-w-[150px] items-center justify-between gap-3 rounded-control border bg-surface px-3 transition-colors duration-[167ms] ease-fluent",
+        recording ? "border-ember" : "border-line-strong hover:bg-hover",
       )}
     >
-      {recording ? <span className="text-[13px] text-ink">Press new keys...</span> : <Chord chord={value} />}
+      {recording ? <span className="text-body text-ink">Press new keys…</span> : <Chord chord={value} />}
       <Keyboard size={15} aria-hidden className="text-faint" />
     </button>
   );
