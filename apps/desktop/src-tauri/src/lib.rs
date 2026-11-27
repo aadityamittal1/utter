@@ -194,6 +194,8 @@ pub fn run() {
 
     app.run(|app, event| {
         if let RunEvent::Exit = event {
+            #[cfg(target_os = "windows")]
+            pill_windows::stop_keeper();
             if let Some(slot) = app.try_state::<HookSlot>() {
                 // Take the handle first so no lock is held while the hook thread stops.
                 let h = slot.0.lock().take();

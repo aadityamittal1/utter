@@ -34,6 +34,8 @@ const SHOW_AFTER: Duration = Duration::from_millis(150);
 pub enum SessionMsg {
     Hotkey(HotkeyEvent),
     Pill(PillInput),
+    /// Pill click on the idle capsule: start a hands-free dictation (the HandsFree hotkey path).
+    PillStart,
 }
 
 struct Active {
@@ -52,6 +54,13 @@ struct Active {
     locked: bool,
     /// The start sound has played and the listening/locked pill is showing.
     shown: bool,
+}
+
+/// The input a pill "start" click becomes: the HandsFree press, only when the session is idle
+/// and not paused (decided on the worker, so it never depends on the lagging pill state).
+pub fn pill_start_input(state: State, paused: bool) -> Option<Input> {
+    (state == State::Idle && !paused)
+        .then_some(Input::Hotkey(HotkeyEvent::Pressed(Action::HandsFree)))
 }
 
 pub fn mode_str(m: Mode) -> &'static str {
@@ -143,6 +152,10 @@ impl Worker {
                 Input::Hotkey(ev)
             }
             SessionMsg::Pill(p) => Input::Pill(p),
+            SessionMsg::PillStart => match pill_start_input(self.state, self.st.is_paused()) {
+                Some(i) => i,
+                None => return,
+            },
         };
         self.apply(&input);
     }
@@ -723,5 +736,25 @@ pub fn save_audio(st: &AppState, created_ms: i64, samples: &[f32]) -> Option<Str
             log::warn!("audio not saved: {e}");
             None
         }
+    }
+}
+
+#[cfg(test)]
+mod pill_start_tests {
+    use super::*;
+    use crate::pipeline::route::Mode;
+
+    #[test]
+    fn pill_start_is_a_hands_free_press_only_when_idle_and_not_paused() {
+        assert_eq!(
+            pill_start_input(State::Idle, false),
+            Some(Input::Hotkey(HotkeyEvent::Pressed(Action::HandsFree)))
+        );
+        assert_eq!(pill_start_input(State::Idle, true), None);
+        let rec = State::Recording {
+            mode: Mode::Dictate,
+            locked: false,
+        };
+        assert_eq!(pill_start_input(rec, false), None);
     }
 }

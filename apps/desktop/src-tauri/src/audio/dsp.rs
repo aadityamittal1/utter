@@ -171,7 +171,8 @@ pub fn normalize_gain(s: &mut [f32]) {
     }
 }
 
-/// `n` RMS chunks of `window`, mapped from -55..-10 dBFS onto 0..1 and curved with `pow 0.7`\n/// so quiet speech still moves the bars (UI v2 spec section 3).
+/// `n` RMS chunks of `window`, mapped from -55..-10 dBFS onto 0..1 and curved with `pow 0.7`
+/// so quiet speech still moves the bars (UI v2 spec section 3).
 pub fn level_bars(window: &[f32], n: usize) -> Vec<f32> {
     (0..n)
         .map(|i| {

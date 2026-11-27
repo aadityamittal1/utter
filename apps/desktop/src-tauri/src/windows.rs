@@ -22,6 +22,12 @@ const HIT_SLOP: f64 = 6.0;
 
 /// Set by the keeper while a fullscreen app, game or presentation is in front.
 pub static FULLSCREEN_HIDDEN: AtomicBool = AtomicBool::new(false);
+/// Set while the pill UI shows its right-click menu: the interactive hit area is then the menu
+/// rect (`pill_hit_rect`). Cleared on every pill state change and when the pill hides.
+pub static MENU_OPEN: AtomicBool = AtomicBool::new(false);
+/// Logical size of the menu rect the pill UI draws (centred, same bottom margin as the capsule).
+const MENU_W: u32 = 340;
+const MENU_H: u32 = 40;
 
 /// Physical-pixel rect `(x, y, w, h)` of the pill window for a work area `(x, y, w, h)` and DPI
 /// scale: horizontally centred, placed so the visible capsule floats 12 logical px above the
@@ -52,7 +58,27 @@ pub fn pill_capsule_rect(kind: PillKind, hover: bool) -> (i32, i32, u32, u32) {
     (x, y, w, h)
 }
 
-/// Is the physical-pixel `cursor` over the capsule (plus a small slop) of a pill window whose
+/// The logical rect that must receive the mouse: the menu rect while the menu is open,
+/// otherwise the capsule.
+pub fn pill_hit_rect(kind: PillKind, hover: bool, menu: bool) -> (i32, i32, u32, u32) {
+    if menu {
+        let x = (PILL_W as i32 - MENU_W as i32) / 2;
+        let y = PILL_H as i32 - CAPSULE_BOTTOM_MARGIN - MENU_H as i32;
+        (x, y, MENU_W, MENU_H)
+    } else {
+        pill_capsule_rect(kind, hover)
+    }
+}
+
+/// What the keeper must do after a cursor sample: `(set click-through to, emit hover as)`,
+/// each `None` when nothing changed. Click-through is the opposite of "cursor inside".
+pub fn hover_transition(ignoring: bool, hover: bool, inside: bool) -> (Option<bool>, Option<bool>) {
+    let ignore = (inside == ignoring).then_some(!inside);
+    let emit = (inside != hover).then_some(inside);
+    (ignore, emit)
+}
+
+/// Is the physical-pixel `cursor` over the hit rect (plus a small slop) of a pill window whose
 /// top-left is `origin` (physical px) at DPI `scale`?
 pub fn capsule_hit(
     cursor: (i32, i32),
@@ -60,8 +86,9 @@ pub fn capsule_hit(
     scale: f64,
     kind: PillKind,
     hover: bool,
+    menu: bool,
 ) -> bool {
-    let (cx, cy, cw, ch) = pill_capsule_rect(kind, hover);
+    let (cx, cy, cw, ch) = pill_hit_rect(kind, hover, menu);
     let px = |v: f64| (v * scale).round() as i32;
     let slop = px(HIT_SLOP);
     let left = origin.0 + px(f64::from(cx)) - slop;
@@ -111,10 +138,13 @@ pub fn create_pill(app: &AppHandle) -> tauri::Result<WebviewWindow> {
         .focused(false)
         .visible(false)
         .build()?;
-    // Click-through until the keeper sees the cursor over the capsule.
-    let _ = w.set_ignore_cursor_events(true);
+    // Click-through until the keeper sees the cursor over the capsule. After `harden` the pill
+    // is driven natively only: tao flag setters (show/hide/ignore-cursor/...) would re-apply
+    // tao's own style flags and undo ours.
     #[cfg(target_os = "windows")]
     crate::pill_windows::harden(&w);
+    #[cfg(not(target_os = "windows"))]
+    let _ = w.set_ignore_cursor_events(true);
     Ok(w)
 }
 
@@ -149,6 +179,7 @@ fn place_pill(app: &AppHandle, w: &WebviewWindow) {
 fn show_topmost_noactivate(w: &WebviewWindow) {
     if let Ok(h) = w.hwnd() {
         crate::pill_windows::show_topmost(h.0 as isize);
+        crate::pill_windows::wake_keeper();
     }
 }
 
@@ -157,9 +188,36 @@ fn show_topmost_noactivate(w: &WebviewWindow) {
     let _ = w.show();
 }
 
+#[cfg(target_os = "windows")]
+fn hide_pill(w: &WebviewWindow) {
+    if let Ok(h) = w.hwnd() {
+        crate::pill_windows::hide(h.0 as isize);
+    }
+}
+
+#[cfg(not(target_os = "windows"))]
+fn hide_pill(w: &WebviewWindow) {
+    let _ = w.hide();
+}
+
+/// Really visible? (tao's own visibility flag is stale for a natively shown pill.)
+#[cfg(target_os = "windows")]
+fn pill_shown(w: &WebviewWindow) -> bool {
+    w.hwnd()
+        .map(|h| crate::pill_windows::is_visible(h.0 as isize))
+        .unwrap_or(false)
+}
+
+#[cfg(not(target_os = "windows"))]
+fn pill_shown(w: &WebviewWindow) -> bool {
+    w.is_visible().unwrap_or(false)
+}
+
 /// Apply a pill state to its window. The work runs on the main thread (Tauri window calls and
 /// `SetWindowPos` on our own window belong there); calls are queued in order.
 pub fn sync_pill(app: &AppHandle, st: &PillState, allowed: bool) {
+    // Any state change closes the menu (the UI re-opens it if it wants it).
+    MENU_OPEN.store(false, Ordering::Relaxed);
     let show = pill_visible(allowed, FULLSCREEN_HIDDEN.load(Ordering::Relaxed), st.state);
     let kind = st.state;
     let handle = app.clone();
@@ -171,10 +229,11 @@ fn apply_pill(app: &AppHandle, kind: PillKind, show: bool) {
         return;
     };
     if !show {
-        let _ = w.hide();
+        MENU_OPEN.store(false, Ordering::Relaxed);
+        hide_pill(&w);
         return;
     }
-    let visible = w.is_visible().unwrap_or(false);
+    let visible = pill_shown(&w);
     // Idle placement is the keeper's job (it follows the cursor's monitor); place here when the
     // pill appears and for every dictation so it opens where the user is looking.
     if !visible || matches!(kind, PillKind::Listening | PillKind::Locked) {
@@ -269,7 +328,7 @@ mod tests {
     #[test]
     fn hit_test_covers_capsule_plus_slop_and_scales() {
         // Window at (100, 900); idle capsule is x 158..202, y 56..64 logical.
-        let hit = |p, scale| capsule_hit(p, (100, 900), scale, PillKind::Idle, false);
+        let hit = |p, scale| capsule_hit(p, (100, 900), scale, PillKind::Idle, false, false);
         assert!(hit((280, 960), 1.0), "centre");
         assert!(hit((254, 952), 1.0), "inside the 6px slop");
         assert!(!hit((240, 960), 1.0), "left of the capsule");
@@ -280,6 +339,7 @@ mod tests {
             (100, 900),
             2.0,
             PillKind::Idle,
+            false,
             false
         ));
         assert!(!capsule_hit(
@@ -287,6 +347,7 @@ mod tests {
             (100, 900),
             2.0,
             PillKind::Idle,
+            false,
             false
         ));
         // Hover enlarges the target so the grown capsule does not flicker.
@@ -295,6 +356,7 @@ mod tests {
             (100, 900),
             1.0,
             PillKind::Idle,
+            false,
             false
         ));
         assert!(capsule_hit(
@@ -302,10 +364,55 @@ mod tests {
             (100, 900),
             1.0,
             PillKind::Idle,
-            true
+            true,
+            false
         ));
     }
 
+    #[test]
+    fn menu_rect_is_340x40_centred_with_the_same_bottom_margin() {
+        let (x, y, w, h) = pill_hit_rect(PillKind::Idle, false, true);
+        assert_eq!((w, h), (340, 40));
+        assert_eq!(x * 2 + w as i32, 360);
+        assert_eq!(y + h as i32, 72 - 8);
+        assert_eq!(
+            pill_hit_rect(PillKind::Locked, false, false),
+            pill_capsule_rect(PillKind::Locked, false)
+        );
+    }
+
+    #[test]
+    fn open_menu_keeps_the_cursor_interactive_outside_the_capsule() {
+        // 20px left of the idle capsule (logical x ~138) is inside the menu rect only.
+        let p = (100 + 138, 960);
+        assert!(!capsule_hit(
+            p,
+            (100, 900),
+            1.0,
+            PillKind::Idle,
+            false,
+            false
+        ));
+        assert!(capsule_hit(p, (100, 900), 1.0, PillKind::Idle, false, true));
+    }
+
+    #[test]
+    fn hover_transitions_only_report_changes() {
+        // (ignoring, hover, inside) -> (set click-through, emit hover)
+        assert_eq!(hover_transition(true, false, false), (None, None));
+        assert_eq!(
+            hover_transition(true, false, true),
+            (Some(false), Some(true))
+        );
+        assert_eq!(hover_transition(false, true, true), (None, None));
+        assert_eq!(
+            hover_transition(false, true, false),
+            (Some(true), Some(false))
+        );
+        // click-through state can drift from hover (e.g. hidden window): each is independent
+        assert_eq!(hover_transition(false, false, false), (Some(true), None));
+        assert_eq!(hover_transition(true, true, true), (Some(false), None));
+    }
     #[test]
     fn quns_hides_only_for_busy_fullscreen_and_presentation() {
         // 1 not present, 2 busy, 3 d3d fullscreen, 4 presentation, 5 accepts, 6 quiet, 7 app

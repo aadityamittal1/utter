@@ -5,7 +5,6 @@ use crate::app_state::{AppState, PillKind};
 use crate::audio::capture::list_input_devices;
 use crate::hotkeys::action::Action;
 use crate::hotkeys::hook_windows::{cancel_capture, capture_next_chord};
-use crate::hotkeys::matcher::HotkeyEvent;
 use crate::llm::client::{ClaudeClient, LlmError};
 use crate::pipeline::machine::PillInput;
 use crate::pipeline::session::SessionMsg;
@@ -446,19 +445,14 @@ pub fn stop_shortcut_capture() {
 
 // ---- pill ----
 
-/// The session message a pill click action turns into, given the pill's current state.
-/// `stop`/`cancel` always forward (the state machine ignores them when idle); `start` is the
-/// HandsFree hotkey press (idle pill only); `toggle` stops and inserts a live dictation.
-pub fn pill_session_msg(action: &str, kind: PillKind) -> Option<SessionMsg> {
+/// The session message a pill click action turns into. `toggle` is an unconditional stop (the
+/// state machine ignores it when idle), `start` is decided on the worker; neither depends on
+/// the pill state, which lags the session by `SHOW_AFTER`.
+pub fn pill_session_msg(action: &str) -> Option<SessionMsg> {
     match action {
-        "stop" => Some(SessionMsg::Pill(PillInput::Stop)),
+        "stop" | "toggle" => Some(SessionMsg::Pill(PillInput::Stop)),
         "cancel" => Some(SessionMsg::Pill(PillInput::Cancel)),
-        "start" if kind == PillKind::Idle => {
-            Some(SessionMsg::Hotkey(HotkeyEvent::Pressed(Action::HandsFree)))
-        }
-        "toggle" if matches!(kind, PillKind::Listening | PillKind::Locked) => {
-            Some(SessionMsg::Pill(PillInput::Stop))
-        }
+        "start" => Some(SessionMsg::PillStart),
         _ => None,
     }
 }
@@ -467,8 +461,7 @@ pub fn pill_session_msg(action: &str, kind: PillKind) -> Option<SessionMsg> {
 pub fn pill_action(st: St, action: String) -> CmdResult<()> {
     match action.as_str() {
         "stop" | "cancel" | "start" | "toggle" => {
-            let kind = st.pill.lock().state;
-            if let Some(msg) = pill_session_msg(&action, kind) {
+            if let Some(msg) = pill_session_msg(&action) {
                 let _ = st.session_tx.send(msg);
             }
         }
@@ -490,6 +483,9 @@ pub fn pill_action(st: St, action: String) -> CmdResult<()> {
                 crate::windows::sync_pill(&state.app, &cur, state.pill_allowed());
             });
         }
+        // The pill UI shows its menu inside the 340x40 menu rect; keep that rect interactive.
+        "menuOpen" => crate::windows::MENU_OPEN.store(true, std::sync::atomic::Ordering::Relaxed),
+        "menuClose" => crate::windows::MENU_OPEN.store(false, std::sync::atomic::Ordering::Relaxed),
         "openHub" => crate::windows::show_hub(&st.app, None),
         "openSettings" => crate::windows::show_hub(&st.app, Some("settings")),
         _ => return Err("Unknown pill action".into()),
@@ -522,53 +518,30 @@ mod tests {
     use super::*;
 
     #[test]
-    fn pill_start_is_the_hands_free_hotkey_press_and_only_when_idle() {
-        let m = pill_session_msg("start", PillKind::Idle);
+    fn pill_actions_map_to_session_messages_regardless_of_pill_state() {
         assert!(matches!(
-            m,
-            Some(SessionMsg::Hotkey(HotkeyEvent::Pressed(Action::HandsFree)))
+            pill_session_msg("start"),
+            Some(SessionMsg::PillStart)
         ));
-        for k in [
-            PillKind::Listening,
-            PillKind::Locked,
-            PillKind::Thinking,
-            PillKind::Done,
-            PillKind::Error,
-        ] {
-            assert!(pill_session_msg("start", k).is_none(), "{k:?}");
-        }
-    }
-
-    #[test]
-    fn pill_toggle_stops_only_a_live_dictation() {
-        for k in [PillKind::Listening, PillKind::Locked] {
+        for a in ["stop", "toggle"] {
             assert!(matches!(
-                pill_session_msg("toggle", k),
+                pill_session_msg(a),
                 Some(SessionMsg::Pill(PillInput::Stop))
             ));
         }
-        for k in [
-            PillKind::Idle,
-            PillKind::Thinking,
-            PillKind::Done,
-            PillKind::Error,
-        ] {
-            assert!(pill_session_msg("toggle", k).is_none(), "{k:?}");
-        }
-    }
-
-    #[test]
-    fn pill_stop_and_cancel_forward_and_others_are_not_session_messages() {
         assert!(matches!(
-            pill_session_msg("stop", PillKind::Locked),
-            Some(SessionMsg::Pill(PillInput::Stop))
-        ));
-        assert!(matches!(
-            pill_session_msg("cancel", PillKind::Listening),
+            pill_session_msg("cancel"),
             Some(SessionMsg::Pill(PillInput::Cancel))
         ));
-        for a in ["retry", "hide1h", "openHub", "openSettings", "bogus"] {
-            assert!(pill_session_msg(a, PillKind::Idle).is_none(), "{a}");
+        for a in [
+            "retry",
+            "hide1h",
+            "openHub",
+            "openSettings",
+            "menuOpen",
+            "bogus",
+        ] {
+            assert!(pill_session_msg(a).is_none(), "{a}");
         }
     }
     #[test]
