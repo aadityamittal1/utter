@@ -6,6 +6,73 @@ Status: approved by owner request ("get this done", 2026-11-26). Supersedes the 
 Research inputs (not committed, summarised here): HeroUI v3 docs, Wispr Flow help center,
 Handy overlay source, Microsoft Learn (Mica, title bar, Segoe UI Variable, Fluent 2), Chromium.
 
+## 0. Amendment A: owner's visual references (wins over §1–§4 where they differ)
+
+The owner supplied nine screenshots of Wispr Flow's Windows app as the **structural and visual
+reference** (kept outside the repo at `.superpowers/sdd/2026-11-26-ui-v2/refs/`). Match their
+layout, density, hierarchy and feel; do **not** copy Wispr's name, logo, wording, illustrations,
+banner imagery, third-party app logos or paid-plan UI (no "Get unlimited access", "Invite your team",
+"Get a free month", "Shared with team"). Everything is Utter-branded and only shows Utter features.
+
+- **Window chrome.** Custom title bar (`decorations: false`), 48px tall, on the canvas colour:
+  left = sidebar collapse toggle; right = theme toggle (sun/moon), then Windows caption buttons
+  (minimise, maximise/restore, close; 46x32 hit areas, close hover `#c42b1c` with white glyph),
+  drag region everywhere else. Snap Layouts: Win+Z always works; native maximise-hover flyout via
+  `tauri-plugin-decorum` if it works on this setup, otherwise documented as a known gap. Window
+  corners stay rounded by DWM. **No Mica** (opaque canvas like the references).
+- **Canvas + panel.** Warm light canvas `#f4f2ee` (dark `#1b1a19`) behind a sidebar (220px) and a
+  large content panel: `#fbfbf9` (dark `#232220`), radius 20px, hairline, inset 0 right/bottom 8px,
+  starts under the title bar. Pages centre their content at max 880px inside the panel, 40px top padding.
+- **Sidebar.** Utter wordmark (logo mark + "utter") at top; nav rows 40px, 20px icons stroke 1.5,
+  15px labels; active row = raised warm `#ebe8e2` (dark `#2e2c2a`), radius 10px, no accent bar.
+  Main group: Home, History, Dictionary, Snippets, Styles, Transforms, Notes, Insights.
+  Bottom group above a hairline: Settings (opens the Settings dialog), Help (opens the GitHub docs).
+- **Type.** Interface: Segoe UI Variable (as §2). **Display serif**: Instrument Serif (bundled,
+  already the brand's display face) for banner headlines, settings section titles, the "My
+  Transforms"-style section headings and big stat figures (Home stats card). Page titles
+  (Home/History/Dictionary/…) are Segoe UI Variable Display 28/36 semibold. Small group labels
+  (date groups, settings nav sections) may be uppercase 12px with 0.06em tracking, muted — the one
+  place uppercase is allowed (deliberate reference convention).
+- **Colour.** Warm neutral ramp (unslop "warm"), not graphite: canvas `#f4f2ee`, panel `#fbfbf9`,
+  card `#ffffff`, raised `#f1efea`, row hover `#f3f1ec`, hairline `rgb(26 24 20 / 0.08)`, text
+  `#1a1814`, secondary `#5e5a52`, muted `#77726a`. Dark: canvas `#1b1a19`, panel `#232220`, card
+  `#2a2826`, raised `#312f2c`, text `#f4f2ee`, secondary `#c4bfb6`, muted `#9b958b`.
+  **Primary buttons and "on" switches are ink** (`#1a1814` with white text; dark theme: `#f4f2ee`
+  with ink text), radius 10px, 40px tall (32px small). Secondary buttons: raised fill, no border.
+  Ember is the brand accent for selection (selected style card border), live states, links and
+  the one data series in charts/heatmap (ember ramp of 4 steps).
+- **Home.** "Welcome back, {first name}" title (no emoji, no exclamation; plain "Home" when no name).
+  Two columns: main (banner card, then recent dictations grouped by day — uppercase date label,
+  rows = muted time column 80px + text, hover row actions: play, copy, more) and a 280px right
+  column (stats card: total words, wpm, day streak as serif figures with sans labels; one tip card).
+  Banner: dark ink card radius 16 with an ember waveform drawn in SVG on the right, serif headline,
+  one line, one light button, dismiss ×. Content is about a real Utter feature (e.g. Transforms).
+- **History.** Same day-grouped list as Home with search, filters and the existing actions.
+- **Dictionary / Snippets.** Title + right-aligned ink "Import" and "Add new" buttons; a toolbar
+  row with tabs (Dictionary: All / Replacements / Words; Snippets: none — just the toolbar) and
+  right icon buttons (search, sort); one card list (radius 16, hairline, 56px rows, hover row
+  raised with edit/delete icon buttons). Replacements render `from → to`.
+- **Styles.** Tabs per context (Personal messages, Work messages, Email, Other); a dark banner card
+  explaining where the style applies (serif headline; app chips as plain text, no logos); three
+  style cards with a title, a sub-line and an example message bubble + avatar initial; the selected
+  card has a 2px ember border.
+- **Transforms.** Title; enable switch + keycaps hint on the right; banner card; "Auto-apply after
+  dictation" row (label, description, select, switch); serif "My transforms" heading with "Reset to
+  defaults" ghost button and ink "Create new"; cards with keycaps, name, description; a dashed
+  "Create your own" card.
+- **Insights.** Tabs (Usage / Voice if data exists, else just Usage); three stat cards (wpm with a
+  semicircle gauge, corrections made, total words with a "+x% this month" chip only when real);
+  an app-category card with horizontal bars (ember fill, percentage inside, label right) and a
+  streak heatmap card (month labels, weekday labels, ember 4-step ramp, legend).
+- **Settings = large dialog** (HeroUI Modal, ~1000x680, radius 16) with its own left nav (uppercase
+  section labels "Settings", "About"), pages: General (shortcuts, microphone, languages, theme,
+  text size), System (launch at login, show pill at all times, sounds, mute while dictating if it
+  exists), AI (Claude key, model, enhance), Speech model, Privacy & data, About (version + "Check
+  for updates" link to GitHub releases). Each page: serif title; grouped raised cards
+  (`#f1efea`, radius 16) with rows (label, description, control right: raised "Change" button /
+  select / ink switch), hairline separators.
+- **Onboarding** adopts the same canvas, type and buttons.
+
 ## 1. Direction (unslop)
 
 - **Product.** A Windows dictation app: hold a shortcut, speak, and clean text lands wherever you were typing.
