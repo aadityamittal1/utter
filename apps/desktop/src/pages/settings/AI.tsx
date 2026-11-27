@@ -170,7 +170,7 @@ export default function AI() {
                   return (
                     <label
                       key={m.id}
-                      className={`flex cursor-pointer flex-col gap-1 rounded-card border px-4 py-3 transition-colors has-[:focus-visible]:outline-2 has-[:focus-visible]:outline-[var(--ring)] ${on ? "border-ember bg-accent-soft" : "border-line bg-surface hover:border-line-strong"}`}
+                      className={`flex cursor-pointer flex-col gap-1 rounded-card border px-4 py-3 transition-colors has-[:focus-visible]:outline-2 has-[:focus-visible]:outline-[var(--ring)] ${on ? "border-ember bg-ember-soft" : "border-line bg-surface hover:border-line-strong"}`}
                     >
                       <input type="radio" name="ai-model" className="sr-only" checked={on} onChange={() => void update({ aiModel: m.id })} />
                       <span className="text-sm font-semibold text-ink">{m.name}</span>

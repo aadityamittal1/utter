@@ -80,7 +80,7 @@ export default function Styles() {
                   <p className="text-xs text-muted">{CATEGORY_HINTS[cat]}</p>
                 </div>
                 <label className="flex shrink-0 items-center gap-2.5 text-[13px] text-ink">
-                  <Sparkles size={14} aria-hidden className={enhance ? "text-accent" : "text-faint"} />
+                  <Sparkles size={14} aria-hidden className={enhance ? "text-ember-text" : "text-faint"} />
                   Always enhance
                   <Switch checked={enhance} onChange={(on) => toggleEnhance(cat, on)} label={`Always enhance in ${CATEGORY_LABELS[cat]}`} />
                 </label>
@@ -118,7 +118,7 @@ export default function Styles() {
                         reason
                           ? "cursor-not-allowed border-dashed border-line bg-transparent opacity-60"
                           : on
-                            ? "border-ember bg-accent-soft"
+                            ? "border-ember bg-ember-soft"
                             : "border-line bg-bg hover:border-line-strong hover:bg-hover",
                       )}
                     >
@@ -139,7 +139,7 @@ export default function Styles() {
       <p className="mt-6 max-w-[70ch] text-[13px] text-muted">
         “Always enhance” sends your dictation through Claude in that app type, as if you had held the enhance shortcut. Utter finds the app type from the window you are typing in
         {settings.contextAwareness ? "" : " (context awareness is currently off)"}. It looks at the app and window title only, never at what is on screen.{" "}
-        <button type="button" onClick={() => navigate("settings")} className="font-medium text-accent underline underline-offset-2 hover:no-underline">
+        <button type="button" onClick={() => navigate("settings")} className="font-medium text-ember-text underline underline-offset-2 hover:no-underline">
           See Privacy in Settings
         </button>
       </p>

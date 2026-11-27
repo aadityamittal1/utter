@@ -1,9 +1,11 @@
 import type { LucideIcon } from "lucide-react";
-import { BookA, ChartColumn, History, House, Palette, Settings, StickyNote, TextCursorInput, WandSparkles } from "lucide-react";
+import { BookA, ChartColumn, CircleHelp, History, House, Palette, Settings, StickyNote, TextCursorInput, WandSparkles } from "lucide-react";
+import { Focusable, Tooltip } from "@heroui/react";
 import { useNav } from "../lib/store";
+import { HELP_URL, openExternal } from "../lib/shell";
 import type { Page } from "../lib/types";
 import { cn } from "../lib/cn";
-import { Logo } from "./Logo";
+import { Logo, LogoMark } from "./Logo";
 
 export interface NavItem {
   page: Page;
@@ -22,46 +24,65 @@ export const NAV_ITEMS: NavItem[] = [
   { page: "insights", label: "Insights", icon: ChartColumn },
 ];
 
+export const SIDEBAR_ID = "app-sidebar";
+
 const SETTINGS_ITEM: NavItem = { page: "settings", label: "Settings", icon: Settings };
 
-function NavButton({ item, active, onSelect }: { item: NavItem; active: boolean; onSelect: (p: Page) => void }) {
-  const Icon = item.icon;
-  return (
+const ROW =
+  "group flex h-10 w-full items-center gap-3 rounded-control px-3 text-nav transition-colors duration-[167ms] ease-fluent";
+
+function NavRow({ icon: Icon, label, active, collapsed, onPress }: { icon: LucideIcon; label: string; active?: boolean; collapsed: boolean; onPress: () => void }) {
+  const button = (
     <button
       type="button"
-      onClick={() => onSelect(item.page)}
+      onClick={onPress}
       aria-current={active ? "page" : undefined}
-      className={cn(
-        "group flex h-9 w-full items-center gap-2.5 rounded-control px-2.5 text-sm transition-colors duration-150",
-        active ? "bg-muted-surface font-medium text-ink" : "text-muted hover:bg-hover hover:text-ink",
-      )}
+      aria-label={collapsed ? label : undefined}
+      className={cn(ROW, collapsed && "justify-center px-0", active ? "bg-nav-active text-ink" : "text-muted hover:bg-hover hover:text-ink")}
     >
-      <Icon size={17} strokeWidth={1.75} aria-hidden className={cn("shrink-0 transition-colors", active ? "text-accent" : "text-faint group-hover:text-muted")} />
-      {item.label}
+      <Icon size={20} strokeWidth={1.5} aria-hidden className="shrink-0" />
+      {!collapsed && <span className="truncate">{label}</span>}
     </button>
+  );
+  if (!collapsed) return button;
+  return (
+    <Tooltip delay={300}>
+      {/* Focusable hands the tooltip its hover/focus handlers; a bare native button would not receive them. */}
+      <Focusable>{button}</Focusable>
+      <Tooltip.Content placement="right">{label}</Tooltip.Content>
+    </Tooltip>
   );
 }
 
+/** Sits on the canvas (no panel of its own): 220px, or a 76px icon rail when collapsed. */
 export function Sidebar() {
   const page = useNav((s) => s.page);
   const navigate = useNav((s) => s.navigate);
+  const openSettings = useNav((s) => s.openSettings);
+  const collapsed = useNav((s) => s.sidebarCollapsed);
 
   return (
-    <aside className="flex h-full w-[232px] shrink-0 flex-col border-r border-line bg-bg px-3 pb-4 pt-5">
-      <div data-tauri-drag-region className="px-2.5 pb-6 pt-1">
-        <Logo height={17} />
+    <aside
+      id={SIDEBAR_ID}
+      className={cn(
+        "flex h-full shrink-0 flex-col pb-3 pl-3 pr-2 transition-[width] duration-[250ms] ease-fluent",
+        collapsed ? "w-[76px]" : "w-[220px]",
+      )}
+    >
+      <div className={cn("flex h-10 items-center pb-2 pt-1", collapsed ? "justify-center" : "px-3")}>
+        {collapsed ? <LogoMark width={32} /> : <Logo height={17} />}
       </div>
-      <nav aria-label="Main" className="flex min-h-0 flex-1 flex-col">
+      <nav aria-label="Main" className="mt-3 flex min-h-0 flex-1 flex-col">
         <div className="flex flex-1 flex-col gap-0.5 overflow-y-auto">
           {NAV_ITEMS.map((item) => (
-            <NavButton key={item.page} item={item} active={page === item.page} onSelect={navigate} />
+            <NavRow key={item.page} icon={item.icon} label={item.label} active={page === item.page} collapsed={collapsed} onPress={() => navigate(item.page)} />
           ))}
         </div>
-        <div className="mt-3 border-t border-line pt-3">
-          <NavButton item={SETTINGS_ITEM} active={page === "settings"} onSelect={navigate} />
+        <div className="mt-3 flex flex-col gap-0.5 border-t border-line pt-3">
+          <NavRow icon={SETTINGS_ITEM.icon} label={SETTINGS_ITEM.label} active={page === "settings"} collapsed={collapsed} onPress={() => openSettings()} />
+          <NavRow icon={CircleHelp} label="Help" collapsed={collapsed} onPress={() => void openExternal(HELP_URL)} />
         </div>
       </nav>
-      <p className="mt-3 px-2.5 text-xs text-faint">Powered by Claude Haiku</p>
     </aside>
   );
 }

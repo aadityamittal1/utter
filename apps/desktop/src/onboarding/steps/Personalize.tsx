@@ -31,7 +31,7 @@ function Choice<T extends string>({ label, options, value, onChange }: { label: 
             onClick={() => onChange(o.id)}
             className={cn(
               "rounded-control border px-3 py-1.5 text-left transition-colors",
-              value === o.id ? "border-ember bg-accent-soft" : "border-line bg-surface hover:border-line-strong",
+              value === o.id ? "border-ember bg-ember-soft" : "border-line bg-surface hover:border-line-strong",
             )}
           >
             <span className="block text-[13px] font-medium text-ink">{o.label}</span>

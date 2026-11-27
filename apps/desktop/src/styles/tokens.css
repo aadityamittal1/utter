@@ -1,84 +1,314 @@
 /*
- * Utter design tokens. Values come from brand/palette.json.
- * Each semantic token is declared once as light-dark(light, dark); the active
- * scheme comes from color-scheme: follows the OS unless [data-theme] forces it.
+ * Utter design tokens (UI v2, Amendment A): warm canvas, ink primary, ember accent,
+ * Segoe UI Variable, Fluent radii and motion.
+ *
+ * Declared once for light in :root and overridden in .dark / [data-theme="dark"].
+ * appearance.ts sets BOTH the class and data-theme on <html>, so either selector matches.
+ * Plain (unlayered) rules so they beat HeroUI's themed variables.
+ *
+ * Role names the pages already use stay valid:
+ *   text-ink = primary text      text-muted = secondary text     text-faint = muted text
+ *   bg-bg = canvas               bg-surface = card               bg-muted-surface = raised
+ *   border-line / -strong = hairlines
+ * Accent roles: HeroUI's "accent" is INK (primary buttons, switches). Ember is for
+ * selection, live states, links and data: bg-ember, text-ember-text, bg-ember-soft.
  */
 :root {
-  color-scheme: light dark;
+  color-scheme: light;
 
-  /* core brand */
+  /* brand constants (pill + logo; never theme-dependent) */
   --ink: #14131a;
   --paper: #faf8f5;
-  --ember: #ff5a36;
+  --ember-brand: #ff5a36;
   --ember-dark: #e0401e;
-  --lilac: #8b7cf6;
+  --lilac: #8b7cf6; /* pill only; retired elsewhere */
 
-  /* semantic */
-  --bg: light-dark(#faf8f5, #14131a);
-  --surface: light-dark(#ffffff, #1d1c25);
-  --surface-muted: light-dark(#f3f0eb, #262530);
-  --border: light-dark(#e4e0d9, #34323f);
-  --border-strong: light-dark(#cfcac1, #3f3d49);
-  --text: light-dark(#14131a, #faf8f5);
-  --text-muted: light-dark(#5e5b66, #b4b1bc);
-  /* >= 4.5:1 on bg, surface and surface-muted in both themes */
-  --text-faint: light-dark(#6a6773, #9a97a4);
-  --accent: light-dark(#e0401e, #ff5a36);
+  /* surfaces */
+  --bg: #f4f2ee; /* canvas */
+  --panel: #fbfbf9; /* content panel */
+  --surface: #ffffff; /* card */
+  --surface-muted: #f1efea; /* raised */
+  --row-hover: #f3f1ec;
+  --nav-active: #ebe8e2;
+  --border: rgb(26 24 20 / 0.08);
+  --border-strong: rgb(26 24 20 / 0.16);
+
+  /* text */
+  --text: #1a1814;
+  --text-muted: #5e5a52; /* secondary */
+  --text-faint: #6c675f; /* muted; >= 4.5:1 on card, panel, canvas */
+
+  /* ink (primary buttons, "on" switches) */
+  --ink-fill: #1a1814;
+  --ink-fill-hover: #34312b;
+  --on-ink: #ffffff;
+
+  /* ember */
+  --ember: #ff5a36;
   --accent-fill: #ff5a36;
-  --accent-fill-hover: light-dark(#f24a26, #ff6e4f);
-  --on-accent: #14131a;
-  --accent-soft: light-dark(rgb(255 90 54 / 0.1), rgb(255 90 54 / 0.14));
-  --highlight: light-dark(#8b7cf6, #a99efa);
-  --highlight-soft: light-dark(rgb(139 124 246 / 0.12), rgb(169 158 250 / 0.16));
-  --danger: light-dark(#c2331a, #ff8068);
-  --danger-soft: light-dark(rgb(194 51 26 / 0.09), rgb(255 128 104 / 0.13));
-  --success: light-dark(#2f7d4f, #6fcf97);
-  --success-soft: light-dark(rgb(47 125 79 / 0.1), rgb(111 207 151 / 0.13));
-  --hover: light-dark(rgb(20 19 26 / 0.045), rgb(250 248 245 / 0.06));
-  --active: light-dark(rgb(20 19 26 / 0.075), rgb(250 248 245 / 0.1));
-  --scrim: light-dark(rgb(20 19 26 / 0.35), rgb(0 0 0 / 0.55));
-  --shadow-color: light-dark(rgb(20 19 26 / 0.16), rgb(0 0 0 / 0.5));
-  --shadow-pop: 0 8px 24px -8px var(--shadow-color), 0 0 0 1px var(--border);
-  --ring: light-dark(#e0401e, #ff5a36);
+  --accent-fill-hover: #f24a26;
+  --on-ember: #1a1814;
+  --on-accent: var(--on-ember);
+  --ember-text: #c2361a;
+  --ember-soft: rgb(255 90 54 / 0.12);
+
+  /* semantic (Fluent) */
+  --success: #0f7b0f;
+  --success-soft: rgb(15 123 15 / 0.1);
+  --warning: #9d5d00;
+  --danger: #c42b1c;
+  --danger-soft: rgb(196 43 28 / 0.09);
+
+  --hover: rgb(26 24 20 / 0.045);
+  --active: rgb(26 24 20 / 0.075);
+  --scrim: rgb(26 24 20 / 0.45);
+  --shadow-color: rgb(26 24 20 / 0.14);
+  --elev-card: 0 2px 4px rgb(26 24 20 / 0.04), 0 0 0 1px rgb(26 24 20 / 0.06);
+  --shadow-pop: 0 8px 16px rgb(26 24 20 / 0.14), 0 0 0 1px var(--border);
+  --ring: var(--text);
+
+  /* motion (Windows); curves are in @theme as ease-fluent / ease-fluent-exit */
+  --dur-fade: 83ms;
+  --dur-fast: 167ms;
+  --dur-menu: 250ms;
+  --dur-page: 333ms;
+
+  /* ---- HeroUI variable mapping ---- */
+  --radius: 0.5rem; /* HeroUI default = Tailwind default scale; overlays set explicit radii below */
+  --field-radius: 10px;
+  --field-border-width: 1px;
+  --background: var(--bg);
+  --foreground: var(--text);
+  --surface-foreground: var(--text);
+  --surface-secondary: var(--surface-muted);
+  --surface-tertiary: #e9e6e0;
+  --overlay: #ffffff;
+  --overlay-foreground: var(--text);
+  --muted: var(--text-muted);
+  --default: var(--surface-muted);
+  --default-foreground: var(--text);
+  --accent: var(--ink-fill);
+  --accent-foreground: var(--on-ink);
+  --accent-soft: var(--surface-muted);
+  --accent-soft-foreground: var(--text);
+  --focus: var(--text);
+  --link: var(--ember-text);
+  --segment: var(--surface);
+  --segment-foreground: var(--text);
+  --separator: var(--border);
+  --field-background: var(--surface);
+  --field-foreground: var(--text);
+  --field-placeholder: var(--text-faint);
+  --field-border: var(--border-strong);
+  --success-foreground: #ffffff;
+  --warning-foreground: #ffffff;
+  --danger-foreground: #ffffff;
+  --backdrop: var(--scrim);
+  --surface-shadow: 0 2px 4px rgb(26 24 20 / 0.04);
+  --overlay-shadow: 0 8px 16px rgb(26 24 20 / 0.14), 0 0 0 1px rgb(26 24 20 / 0.08);
+  --field-shadow: none;
+  --tooltip-delay: 300ms;
+  --tooltip-close-delay: 100ms;
 }
 
-:root[data-theme="light"] {
-  color-scheme: light;
-}
-:root[data-theme="dark"] {
+.dark,
+[data-theme="dark"] {
   color-scheme: dark;
+
+  --bg: #1b1a19;
+  --panel: #232220;
+  --surface: #2a2826;
+  --surface-muted: #312f2c;
+  --row-hover: #2d2b29;
+  --nav-active: #2e2c2a;
+  --border: rgb(244 242 238 / 0.08);
+  --border-strong: rgb(244 242 238 / 0.16);
+
+  --text: #f4f2ee;
+  --text-muted: #c4bfb6;
+  --text-faint: #a39d93; /* >= 4.5:1 on card, panel, canvas */
+
+  --ink-fill: #f4f2ee;
+  --ink-fill-hover: #ffffff;
+  --on-ink: #1a1814;
+
+  --ember-text: #ff8a6e;
+  --ember-soft: rgb(255 90 54 / 0.16);
+
+  --success: #6ccb5f;
+  --success-soft: rgb(108 203 95 / 0.13);
+  --warning: #fce100;
+  --danger: #ff99a4;
+  --danger-soft: rgb(255 153 164 / 0.13);
+
+  --hover: rgb(244 242 238 / 0.06);
+  --active: rgb(244 242 238 / 0.1);
+  --scrim: rgb(0 0 0 / 0.55);
+  --shadow-color: rgb(0 0 0 / 0.5);
+  --elev-card: 0 0 0 1px rgb(244 242 238 / 0.08);
+  --shadow-pop: 0 8px 16px rgb(0 0 0 / 0.4), 0 0 0 1px var(--border);
+
+  --surface-tertiary: #3a3834;
+  --overlay: #2a2826;
+  --success-foreground: #1a1814;
+  --warning-foreground: #1a1814;
+  --danger-foreground: #1a1814;
+  --surface-shadow: none;
+  --overlay-shadow: 0 8px 16px rgb(0 0 0 / 0.4), 0 0 0 1px rgb(244 242 238 / 0.1);
 }
 
-@theme {
-  --font-sans: "Inter", system-ui, sans-serif;
-  --font-display: "Instrument Serif", Georgia, serif;
-  --font-mono: "JetBrains Mono", ui-monospace, monospace;
-
-  /* Own names so Tailwind's rounded-sm/lg keep their meaning. */
-  --radius-control: 8px;
-  --radius-card: 12px;
-  --radius-panel: 16px;
-}
-
-/* Tailwind utilities: bg-surface, text-muted, border-line, ... */
+/* Tailwind utilities: bg-surface, text-muted, border-line, rounded-card, ... */
 @theme inline {
   --color-bg: var(--bg);
-  --color-surface: var(--surface);
+  --color-panel: var(--panel);
   --color-muted-surface: var(--surface-muted);
+  --color-row-hover: var(--row-hover);
+  --color-nav-active: var(--nav-active);
   --color-line: var(--border);
   --color-line-strong: var(--border-strong);
   --color-ink: var(--text);
-  --color-muted: var(--text-muted);
   --color-faint: var(--text-faint);
-  --color-accent: var(--accent);
-  --color-ember: var(--accent-fill);
+  --color-ink-fill: var(--ink-fill);
+  --color-on-ink: var(--on-ink);
+  --color-ember: var(--ember);
+  --color-ember-text: var(--ember-text);
+  --color-ember-soft: var(--ember-soft);
+  --color-on-ember: var(--on-ember);
   --color-on-accent: var(--on-accent);
-  --color-accent-soft: var(--accent-soft);
-  --color-highlight: var(--highlight);
-  --color-highlight-soft: var(--highlight-soft);
-  --color-danger: var(--danger);
-  --color-danger-soft: var(--danger-soft);
-  --color-success: var(--success);
-  --color-success-soft: var(--success-soft);
+  /* Retired lilac: kept as aliases so unmigrated pages still compile. */
+  --color-highlight: var(--ember-text);
+  --color-highlight-soft: var(--ember-soft);
   --color-hover: var(--hover);
+  --shadow-card: var(--elev-card);
+}
+
+/*
+ * Windows type ramp. Size / line / weight / family bundled per role.
+ * Sizes are rem so the Windows text-scale setting (html font-size) scales them.
+ */
+@utility text-caption {
+  font-size: 0.75rem;
+  line-height: 1.333;
+  font-weight: 400;
+}
+@utility text-body {
+  font-size: 0.875rem;
+  line-height: 1.4286;
+  font-weight: 400;
+}
+@utility text-body-strong {
+  font-size: 0.875rem;
+  line-height: 1.4286;
+  font-weight: 600;
+}
+@utility text-body-lg {
+  font-size: 1.125rem;
+  line-height: 1.333;
+  font-weight: 400;
+}
+@utility text-subtitle {
+  font-family: var(--font-display);
+  font-size: 1.25rem;
+  line-height: 1.4;
+  font-weight: 600;
+}
+@utility text-title {
+  font-family: var(--font-display);
+  font-size: 1.75rem;
+  line-height: 1.2857;
+  font-weight: 600;
+  letter-spacing: -0.01em;
+}
+@utility text-title-lg {
+  font-family: var(--font-display);
+  font-size: 2.5rem;
+  line-height: 1.3;
+  font-weight: 600;
+  letter-spacing: -0.02em;
+}
+@utility text-display {
+  font-family: var(--font-display);
+  font-size: 4.25rem;
+  line-height: 1.353;
+  font-weight: 600;
+  letter-spacing: -0.02em;
+}
+/* Sidebar nav labels (15px per the reference). */
+@utility text-nav {
+  font-size: 0.9375rem;
+  line-height: 1.333;
+  font-weight: 500;
+}
+/* Serif roles (Instrument Serif has one weight). */
+@utility text-serif-heading {
+  font-family: var(--font-serif);
+  font-size: 1.75rem;
+  line-height: 1.2857;
+  font-weight: 400;
+}
+@utility text-serif-figure {
+  font-family: var(--font-serif);
+  font-size: 2rem;
+  line-height: 1.125;
+  font-weight: 400;
+  font-variant-numeric: tabular-nums;
+}
+/* Small group labels: the one place uppercase is allowed. */
+@utility text-group-label {
+  font-size: 0.75rem;
+  line-height: 1.333;
+  font-weight: 500;
+  letter-spacing: 0.06em;
+  text-transform: uppercase;
+}
+
+/* ---- Component refinements over HeroUI ---- */
+
+/* Switch: visible off state (3:1 boundary) in both themes. */
+.switch {
+  --switch-control-bg: #cdc8bf;
+}
+.dark .switch,
+[data-theme="dark"] .switch {
+  --switch-control-bg: #4a4743;
+}
+.switch:not([data-selected="true"]) .switch__control {
+  /* outline, not box-shadow: HeroUI draws its focus ring with box-shadow. */
+  outline: 1px solid var(--text-faint);
+  outline-offset: -1px;
+}
+.switch__thumb {
+  box-shadow: 0 1px 2px rgb(26 24 20 / 0.2);
+}
+
+/* Ghost buttons hover/press with the neutral tints. */
+.button--ghost {
+  --button-bg-hover: var(--hover);
+  --button-bg-pressed: var(--active);
+}
+
+/* Overlays: explicit radii, and a real border so forced-colors keeps the edge. */
+.popover,
+.dropdown__popover,
+.select__popover {
+  border: 1px solid transparent;
+  border-radius: 12px;
+}
+.tooltip {
+  border: 1px solid transparent;
+  border-radius: 6px;
+}
+.modal__dialog,
+.toast {
+  border: 1px solid transparent;
+}
+.toast {
+  border-radius: 12px;
+}
+
+/* Fluent field stroke: darker bottom edge so inputs meet 3:1 on the panel. */
+.input:not([aria-invalid="true"]),
+.textarea:not([aria-invalid="true"]),
+.select__trigger:not([data-invalid="true"]) {
+  border-bottom-color: var(--text-faint);
 }

@@ -2,8 +2,12 @@ import { StrictMode, lazy, Suspense } from "react";
 import { createRoot } from "react-dom/client";
 import "./styles/global.css";
 import { Pill } from "./pill/Pill";
+import { applyCachedAppearance } from "./lib/appearance";
 
-// The pill window is transparent; only the capsule is painted.
+// The pill window is transparent; only the capsule is painted. global.css keeps
+// html[data-window="pill"] transparent even after HeroUI styles load.
+document.documentElement.dataset.window = "pill";
+applyCachedAppearance({ themeOnly: true });
 document.documentElement.style.background = "transparent";
 document.body.style.background = "transparent";
 

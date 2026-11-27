@@ -15,6 +15,7 @@ import type {
   PillState,
   Settings,
   Snippet,
+  SystemAppearance,
   Transform,
   Usage,
 } from "./types";
@@ -163,6 +164,7 @@ function defaultSettings(onboarded: boolean): Settings {
     showPill: true,
     launchAtLogin: false,
     theme: "system",
+    accentSource: "utter",
     historyRetention: "forever",
     keepAudio: true,
     categoryRules: [{ category: "aiPrompt", process: "claude.exe" }],
@@ -552,6 +554,8 @@ export function createMockBackend(options: { pillDemo?: boolean; onboarding?: bo
         settings = { ...settings, onboarded: true };
         emit("settings://changed", structuredClone(settings));
         return null;
+      case "get_system_appearance":
+        return { accent: null, textScale: 1, backdrop: "solid" } satisfies SystemAppearance;
       case "app_info":
         return { version: "0.1.0" };
       default:

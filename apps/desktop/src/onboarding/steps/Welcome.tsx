@@ -16,7 +16,7 @@ export function Welcome({ next }: StepProps) {
       <h1 className="mt-8 font-display text-[56px] leading-[1.04] text-ink outline-none focus:outline-none">
         Speak anywhere.
         <br />
-        <span className="text-accent">Utter</span> writes it.
+        <span className="text-ember-text">Utter</span> writes it.
       </h1>
       <p className="mt-4 max-w-[46ch] text-base leading-relaxed text-muted">
         Dictation that sounds like you, not like a transcript. Setup takes about two minutes.
@@ -24,7 +24,7 @@ export function Welcome({ next }: StepProps) {
       <ul className="mt-9 flex w-full flex-col gap-4">
         {PROMISES.map(({ icon: Icon, title, body }) => (
           <li key={title} className="flex items-start gap-3.5">
-            <span className="mt-0.5 flex size-8 shrink-0 items-center justify-center rounded-control bg-accent-soft text-accent">
+            <span className="mt-0.5 flex size-8 shrink-0 items-center justify-center rounded-control bg-ember-soft text-ember-text">
               <Icon size={16} aria-hidden />
             </span>
             <div>

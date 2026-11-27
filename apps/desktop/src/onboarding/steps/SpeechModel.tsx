@@ -61,7 +61,7 @@ export function SpeechModel({ next, back, download }: StepProps) {
               disabled={busyDownload && download.modelId !== m.id}
               className={cn(
                 "flex items-center gap-3 rounded-card border px-4 py-2.5 text-left transition-colors disabled:opacity-50",
-                on ? "border-ember bg-accent-soft" : "border-line bg-surface hover:border-line-strong",
+                on ? "border-ember bg-ember-soft" : "border-line bg-surface hover:border-line-strong",
               )}
             >
               <span className={cn("flex size-4 shrink-0 items-center justify-center rounded-full border", on ? "border-ember" : "border-line-strong")}>

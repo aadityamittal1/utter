@@ -77,7 +77,7 @@ export function ConnectClaude({ next, back }: StepProps) {
             helper={
               <>
                 Create one at{" "}
-                <button type="button" className="inline-flex items-center gap-1 font-medium text-accent underline-offset-2 hover:underline" onClick={() => void openExternal(KEYS_URL)}>
+                <button type="button" className="inline-flex items-center gap-1 font-medium text-ember-text underline-offset-2 hover:underline" onClick={() => void openExternal(KEYS_URL)}>
                   console.anthropic.com <ExternalLink size={11} aria-hidden />
                 </button>
                 . It's saved only on this PC.

@@ -2,32 +2,21 @@ import { create } from "zustand";
 import { useEffect } from "react";
 import { ipc } from "./ipc";
 import { useBackendEvent } from "./useBackendEvent";
-import type { Page, Settings, ThemePref } from "./types";
+import { toast as heroToast } from "@heroui/react";
+import { applyAppearance, applyCachedAppearance } from "./appearance";
+import type { AccentSource, Page, Settings, ThemePref } from "./types";
 
 export const PAGES: Page[] = ["home", "history", "dictionary", "snippets", "styles", "transforms", "notes", "insights", "settings"];
 
-export const THEME_KEY = "utter.theme";
+export { THEME_KEY } from "./appearance";
 
-export function applyTheme(theme: ThemePref) {
-  const el = document.documentElement;
-  if (theme === "system") el.removeAttribute("data-theme");
-  else el.setAttribute("data-theme", theme);
-  try {
-    localStorage.setItem(THEME_KEY, theme);
-  } catch {
-    /* storage unavailable: theme still applies for this session */
-  }
+/** Apply the theme and accent source (kept for callers that only know the theme). */
+export function applyTheme(theme: ThemePref, accentSource: AccentSource = "utter") {
+  applyAppearance({ theme, accentSource });
 }
 
-/** Apply the last known theme before first paint to avoid a flash. */
-export function applyCachedTheme() {
-  try {
-    const t = localStorage.getItem(THEME_KEY);
-    if (t === "light" || t === "dark") document.documentElement.setAttribute("data-theme", t);
-  } catch {
-    /* ignore */
-  }
-}
+/** Apply the last known appearance before first paint to avoid a flash. */
+export const applyCachedTheme = applyCachedAppearance;
 
 interface SettingsStore {
   settings: Settings | null;
@@ -70,7 +59,7 @@ export const useSettings = create<SettingsStore>((set) => {
   const publish = (extra: Partial<SettingsStore> = {}) => {
     if (!base) return;
     const visible = withPending(base);
-    applyTheme(visible.theme);
+    applyTheme(visible.theme, visible.accentSource);
     set({ settings: visible, ...extra });
   };
 
@@ -119,18 +108,41 @@ function pageFromHash(): Page {
   return (PAGES as string[]).includes(h) ? (h as Page) : "home";
 }
 
+const SIDEBAR_KEY = "utter.sidebarCollapsed";
+
 interface NavStore {
   page: Page;
   navigate: (page: Page) => void;
+  /** Open Settings, optionally at a section. Today this navigates to the settings page; the Settings dialog replaces it. */
+  openSettings: (section?: string) => void;
+  sidebarCollapsed: boolean;
+  toggleSidebar: () => void;
 }
 
 /** Current page. Mirrored in the URL hash so reloads and deep links keep their place. */
-export const useNav = create<NavStore>((set) => ({
+export const useNav = create<NavStore>((set, get) => ({
   page: pageFromHash(),
   navigate: (page) => {
     set({ page });
     try {
       history.replaceState(null, "", `#${page}`);
+    } catch {
+      /* ignore */
+    }
+  },
+  openSettings: () => get().navigate("settings"),
+  sidebarCollapsed: (() => {
+    try {
+      return localStorage.getItem(SIDEBAR_KEY) === "1";
+    } catch {
+      return false;
+    }
+  })(),
+  toggleSidebar: () => {
+    const next = !get().sidebarCollapsed;
+    set({ sidebarCollapsed: next });
+    try {
+      localStorage.setItem(SIDEBAR_KEY, next ? "1" : "0");
     } catch {
       /* ignore */
     }
@@ -151,31 +163,10 @@ export function useStoreListeners(): void {
 }
 
 export type ToastKind = "info" | "success" | "error";
-export interface ToastItem {
-  id: number;
-  kind: ToastKind;
-  message: string;
-}
 
-interface ToastStore {
-  items: ToastItem[];
-  push: (message: string, kind?: ToastKind) => void;
-  dismiss: (id: number) => void;
-}
-
-let toastId = 0;
-export const useToasts = create<ToastStore>((set, get) => ({
-  items: [],
-  push: (message, kind = "info") => {
-    const id = ++toastId;
-    set({ items: [...get().items.slice(-3), { id, kind, message }] });
-    setTimeout(() => get().dismiss(id), kind === "error" ? 6000 : 3200);
-  },
-  dismiss: (id) => set({ items: get().items.filter((t) => t.id !== id) }),
-}));
-
+/** Toasts render through HeroUI; <ToastHost /> mounts the provider once per window. */
 export const toast = {
-  info: (m: string) => useToasts.getState().push(m, "info"),
-  success: (m: string) => useToasts.getState().push(m, "success"),
-  error: (m: string) => useToasts.getState().push(m, "error"),
+  info: (m: string) => void heroToast.info(m),
+  success: (m: string) => void heroToast.success(m),
+  error: (m: string) => void heroToast.danger(m, { timeout: 6000 }),
 };

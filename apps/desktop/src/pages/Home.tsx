@@ -77,8 +77,8 @@ export default function Home() {
       <PageHeader title={title} description="Hold your shortcut, speak, let go. Your words appear wherever you were typing." />
       <div className="flex flex-col gap-6 pb-10">
         {key && !key.set && (
-          <div className="flex items-center gap-4 rounded-card border border-line bg-accent-soft px-5 py-4">
-            <KeyRound size={18} className="shrink-0 text-accent" aria-hidden />
+          <div className="flex items-center gap-4 rounded-card border border-line bg-ember-soft px-5 py-4">
+            <KeyRound size={18} className="shrink-0 text-ember-text" aria-hidden />
             <div className="min-w-0 flex-1">
               <div className="text-sm font-semibold text-ink">Set up your API key</div>
               <div className="text-[13px] text-muted">Dictation works without it. Add a key to unlock enhance, commands and transforms.</div>
@@ -123,7 +123,7 @@ export default function Home() {
           <section aria-label="Recent activity">
             <div className="mb-3 flex items-baseline justify-between">
               <h2 className="text-[15px] font-semibold text-ink">Recent</h2>
-              <button type="button" onClick={() => navigate("history")} className="rounded text-[13px] text-accent hover:underline">
+              <button type="button" onClick={() => navigate("history")} className="rounded text-[13px] text-ember-text hover:underline">
                 See all
               </button>
             </div>
@@ -131,7 +131,7 @@ export default function Home() {
               settled ? (
                 <p className="rounded-card border border-dashed border-line-strong px-5 py-8 text-center text-[13px] text-muted">
                   Couldn't load recent activity.{" "}
-                  <button type="button" onClick={load} className="rounded text-accent hover:underline">
+                  <button type="button" onClick={load} className="rounded text-ember-text hover:underline">
                     Try again
                   </button>
                 </p>
@@ -159,14 +159,14 @@ export default function Home() {
           <aside aria-label="Tip">
             <Card className="px-5 py-4">
               <div className="flex items-center gap-2 text-[13px] font-semibold text-ink">
-                <Lightbulb size={15} className="text-accent" aria-hidden />
+                <Lightbulb size={15} className="text-ember-text" aria-hidden />
                 Tip: {t.title}
               </div>
               <p className="mt-2 text-[13px] leading-relaxed text-muted">{t.body}</p>
               <button
                 type="button"
                 onClick={() => setTip((tip + 1) % TIPS.length)}
-                className="mt-3 rounded text-[13px] text-accent hover:underline"
+                className="mt-3 rounded text-[13px] text-ember-text hover:underline"
               >
                 Next tip
               </button>
