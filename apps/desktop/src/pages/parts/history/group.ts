@@ -40,5 +40,5 @@ export function groupByDay(items: HistoryItem[], now: number = Date.now()): DayG
 
 /** Compact clock for the time column: "2:35pm" (no space, lowercase). */
 export function clockLabel(ms: number): string {
-  return formatTime(ms).replace(/s/g, "").toLowerCase();
+  return formatTime(ms).replace(/\s/g, "").toLowerCase();
 }
