@@ -4,13 +4,21 @@
  * same on light and dark wallpapers. Capsule sizes come from pillLogic.CAPSULE_SIZES (--w/--h)
  * and mirror Rust's pill_capsule_rect.
  */
+/* Fixed pill palette (Amendment A ink, Fluent caution, Windows danger); theme-independent. */
+:root {
+  --pill-ink: #1a1814;
+  --pill-caution: #fce100;
+  --pill-danger: #c42b1c;
+}
+
 html,
 body,
 #root {
   background: transparent !important;
 }
 
-/* The capsule is bottom-centred in the 360x72 window, 8px above its bottom edge (Rust margin). */
+/* The capsule is bottom-centred in the 360x72 window; Pill.tsx sets the bottom padding from
+   CAPSULE_BOTTOM_MARGIN (Rust margin) so the two cannot drift. */
 .pill-root {
   position: fixed;
   inset: 0;
@@ -18,16 +26,16 @@ body,
   display: flex;
   align-items: flex-end;
   justify-content: center;
-  padding-bottom: 8px;
   user-select: none;
   -webkit-user-select: none;
   cursor: default;
 }
 
 .pill-capsule {
-  /* Fluent decelerate */
-  --ease: cubic-bezier(0.1, 0.9, 0.2, 1);
-  --pill-bg: color-mix(in srgb, var(--ink) 96%, transparent);
+  /* Fluent enter (decelerate) / exit (accelerate); the capsule picks by grow / shrink. */
+  --ease: cubic-bezier(0, 0, 0, 1);
+  --ease-size: cubic-bezier(0, 0, 0, 1);
+  --pill-bg: color-mix(in srgb, var(--pill-ink) 96%, transparent);
   --pill-line: color-mix(in srgb, white 18%, transparent);
   --pill-fg: white;
   --pill-fg-dim: color-mix(in srgb, white 72%, transparent);
@@ -44,18 +52,23 @@ body,
   border: 1px solid var(--pill-line);
   background: var(--pill-bg);
   color: var(--pill-fg);
-  box-shadow: 0 2px 8px -2px color-mix(in srgb, var(--ink) 45%, transparent);
+  box-shadow: 0 2px 8px -2px color-mix(in srgb, var(--pill-ink) 45%, transparent);
   font-size: 12px;
   font-weight: 500;
   line-height: 1;
   white-space: nowrap;
   transition:
-    width 167ms var(--ease),
-    height 167ms var(--ease),
-    background-color 167ms var(--ease);
+    width 167ms var(--ease-size),
+    height 167ms var(--ease-size),
+    background-color 167ms var(--ease-size);
 }
 
-.pill-capsule[role="button"] {
+.pill-capsule[data-dir="shrink"] {
+  --ease-size: cubic-bezier(1, 0, 1, 1);
+}
+
+.pill-capsule[role="button"],
+.pill-capsule[data-view="locked"] {
   cursor: pointer;
 }
 .pill-capsule:focus-visible {
@@ -65,13 +78,14 @@ body,
 
 /* Idle: a solid dark sliver that holds up on light and dark wallpapers. */
 .pill-capsule[data-view="idle"] {
-  --pill-bg: color-mix(in srgb, var(--ink) 92%, transparent);
+  --pill-bg: color-mix(in srgb, var(--pill-ink) 92%, transparent);
   box-shadow: none;
 }
 
 .pill-capsule[data-view="error"] {
-  --pill-bg: color-mix(in srgb, var(--ember-dark) 42%, var(--ink));
-  --pill-line: color-mix(in srgb, var(--ember-brand) 55%, transparent);
+  /* white on this is about 6:1 */
+  --pill-bg: color-mix(in srgb, var(--pill-danger) 88%, var(--pill-ink));
+  --pill-line: color-mix(in srgb, white 24%, transparent);
 }
 
 .pill-capsule[data-reduced="true"] {
@@ -145,7 +159,7 @@ body,
 .pill-warn {
   flex: none;
   font-variant-numeric: tabular-nums;
-  color: var(--ember-brand);
+  color: var(--pill-caution);
   font-weight: 600;
 }
 
@@ -258,7 +272,7 @@ body,
 }
 .pill-btn[data-tone="stop"] {
   background: var(--ember-brand);
-  color: var(--ink);
+  color: var(--pill-ink);
 }
 .pill-btn[data-tone="stop"]:hover {
   background: color-mix(in srgb, white 14%, var(--ember-brand));

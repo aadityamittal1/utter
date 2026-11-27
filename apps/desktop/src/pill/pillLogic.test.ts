@@ -8,7 +8,9 @@ import {
   barScale,
   effectiveElapsed,
   frameCoef,
+  CAPSULE_BOTTOM_MARGIN,
   CAPSULE_SIZES,
+  ariaLabel,
   capsuleSize,
   clickAction,
   hoverKeys,
@@ -103,7 +105,7 @@ describe("capsuleSize", () => {
     expect(capsuleSize("warning")).toEqual({ w: 148, h: 36 });
     expect(capsuleSize("locked")).toEqual({ w: 212, h: 36 });
     expect(capsuleSize("thinking")).toEqual({ w: 72, h: 36 });
-    expect(capsuleSize("done")).toEqual({ w: 148, h: 36 });
+    expect(capsuleSize("done")).toEqual({ w: 212, h: 36 });
     expect(capsuleSize("error")).toEqual({ w: 280, h: 36 });
   });
   it("mirrors pill_capsule_rect in the Rust source", () => {
@@ -121,6 +123,12 @@ describe("capsuleSize", () => {
     expect(CAPSULE_SIZES.thinking).toEqual(arm("Thinking"));
     expect(CAPSULE_SIZES.done).toEqual(arm("Done"));
     expect(CAPSULE_SIZES.error).toEqual(arm("Error"));
+    expect(CAPSULE_SIZES.warning).toEqual(arm("Listening"));
+    for (const s of Object.values(CAPSULE_SIZES)) expect(s.w % 2).toBe(0);
+    const konst = (name: string) => Number(new RegExp(String.raw`const ${name}: u32 = (\d+);`).exec(rustWindows)?.[1]);
+    expect(CAPSULE_SIZES.menu.w).toBeLessThanOrEqual(konst("MENU_W"));
+    expect(CAPSULE_SIZES.menu.h).toBeLessThanOrEqual(konst("MENU_H"));
+    expect(CAPSULE_BOTTOM_MARGIN).toBe(Number(/CAPSULE_BOTTOM_MARGIN: i32 = (\d+)/.exec(rustWindows)?.[1]));
     expect(rustWindows).toMatch(/const PILL_W: f64 = 360.0/);
     expect(rustWindows).toMatch(/const PILL_H: f64 = 72.0/);
     expect(rustWindows).toMatch(/CAPSULE_BOTTOM_MARGIN: i32 = 8/);
@@ -174,6 +182,7 @@ describe("hoverKeys", () => {
     expect(hoverKeys("")).toBeNull();
     expect(hoverKeys("Ctrl+Alt+Shift+Win")).toBeNull();
     expect(hoverKeys("Ctrl+Shift+Backspace")).toBeNull();
+    expect(hoverKeys("Ctrl+Shift")).toEqual(["Ctrl", "Shift"]);
   });
 });
 
@@ -209,5 +218,15 @@ describe("effectiveElapsed", () => {
     expect(effectiveElapsed(1000, 4000)).toBe(4000);
     expect(effectiveElapsed(5000, 4000)).toBe(5000);
     expect(effectiveElapsed(Number.NaN, 300)).toBe(300);
+  });
+});
+
+describe("ariaLabel", () => {
+  const b = { mode: "dictate", elapsedMs: 0 };
+  it("announces the 1 minute warning with one constant string", () => {
+    expect(ariaLabel({ ...b, state: "listening", elapsedMs: 19 * 60_000 })).toBe("Recording stops in 1 minute");
+    expect(ariaLabel({ ...b, state: "listening", elapsedMs: 19 * 60_000 + 30_000 })).toBe("Recording stops in 1 minute");
+    expect(ariaLabel({ ...b, state: "locked", elapsedMs: 19 * 60_000 })).toBe("Recording stops in 1 minute");
+    expect(ariaLabel({ ...b, state: "listening", elapsedMs: 1000 })).toBe("Listening");
   });
 });

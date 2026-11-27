@@ -4,7 +4,7 @@
 import { useEffect, useRef, useState, type RefObject } from "react";
 import type { PillState } from "../lib/types";
 import { PillView, usePrefersReducedMotion } from "./Pill";
-import { BAR_COUNT } from "./pillLogic";
+import { BAR_COUNT, CAPSULE_BOTTOM_MARGIN } from "./pillLogic";
 import "./pill.css";
 
 const silent: RefObject<readonly number[]> = { current: [] };
@@ -51,7 +51,7 @@ export function Harness() {
         {CASES.map((c) => (
           <div key={c.label}>
             <div style={{ fontSize: 11, opacity: 0.7, marginBottom: 4 }}>{c.label}</div>
-            <div style={{ position: "relative", width: 360, height: 72, outline: "1px dashed rgb(128 128 128 / 0.5)", boxSizing: "border-box", display: "flex", alignItems: "flex-end", justifyContent: "center", paddingBottom: 8 }}>
+            <div style={{ position: "relative", width: 360, height: 72, outline: "1px dashed rgb(128 128 128 / 0.5)", boxSizing: "border-box", display: "flex", alignItems: "flex-end", justifyContent: "center", paddingBottom: CAPSULE_BOTTOM_MARGIN }}>
               <PillView state={c.state} levelsRef={c.live ? levels : silent} menuOpen={c.menu} hover={c.hover} chord={c.chord} reduced={reduced} onAction={(a) => console.log("pill action", a)} />
             </div>
           </div>

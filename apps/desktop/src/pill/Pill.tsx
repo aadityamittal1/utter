@@ -1,11 +1,11 @@
-import { useCallback, useEffect, useRef, useState, type CSSProperties, type KeyboardEvent, type MouseEvent, type RefObject } from "react";
+import { useCallback, useEffect, useLayoutEffect, useRef, useState, type CSSProperties, type KeyboardEvent, type MouseEvent, type RefObject } from "react";
 import { ipc } from "../lib/ipc";
 import type { PillAction, PillState } from "../lib/types";
 import { useBackendEvent } from "../lib/useBackendEvent";
 import { Bars, ThinkingDots } from "./Bars";
 import {
   BAR_COUNT,
-  DONE_VISIBLE_MS,
+  CAPSULE_BOTTOM_MARGIN,
   ariaLabel,
   capsuleSize,
   clickAction,
@@ -24,6 +24,8 @@ const ZERO = new Array<number>(BAR_COUNT).fill(0);
 const MENU_IDLE_CLOSE_MS = 3000;
 const CLOCK_TICK_MS = 250;
 const FLASH_MS = 2600;
+/** Body clicks right after a view change are ignored (a double-click must not start then stop). */
+const CLICK_GUARD_MS = 300;
 const IDLE: PillState = { state: "idle", mode: "dictate", elapsedMs: 0 };
 
 export function usePrefersReducedMotion(): boolean {
@@ -80,6 +82,9 @@ export interface PillViewProps {
 export function PillView({ state, levelsRef, menuOpen = false, hover = false, chord, reduced = false, onAction, onMenu, onMenuActivity }: PillViewProps) {
   const view = viewFor(state, menuOpen, hover);
   const size = capsuleSize(view);
+  // Grow decelerates, shrink accelerates (Fluent enter / exit curves).
+  const [sized, setSized] = useState<{ w: number; dir: "grow" | "shrink" }>({ w: size.w, dir: "grow" });
+  if (sized.w !== size.w) setSized({ w: size.w, dir: size.w > sized.w ? "grow" : "shrink" });
   const act = (a: PillAction) => () => onAction?.(a);
   /** Inner buttons handle their own click; it must not also reach the capsule's click. */
   const own = (a: PillAction) => (e: MouseEvent) => {
@@ -90,10 +95,44 @@ export function PillView({ state, levelsRef, menuOpen = false, hover = false, ch
   const live = state.state === "listening" || state.state === "locked";
   const warn = live && isWarning(state.elapsedMs);
   const click = clickAction(view);
+  // Only idle / hover / listening are keyboard buttons. Locked has its own stop and cancel
+  // buttons, so its body is a mouse-only click target.
+  const isButton = click !== null && view !== "locked";
+
+  // Hover capsule: keycaps if the chord fits next to "to dictate", else "Click to dictate".
   const keys = hoverKeys(chord);
+  const hoverRef = useRef<HTMLDivElement>(null);
+  const [tooWide, setTooWide] = useState<string | undefined>(undefined);
+  useLayoutEffect(() => {
+    const el = hoverRef.current;
+    if (view !== "hover" || !keys || !el) return;
+    // Natural width, measured independent of the animating capsule.
+    const prev = el.style.width;
+    el.style.width = "max-content";
+    const natural = el.getBoundingClientRect().width;
+    el.style.width = prev;
+    if (natural > size.w - 2) setTooWide(chord);
+  }, [view, keys, chord, size.w]);
+  const shownKeys = keys && tooWide !== chord ? keys : null;
+
+  // Ignore double-clicks and clicks right after the state changes.
+  const guardKey = view === "hover" ? "idle" : view === "warning" ? "listening" : view;
+  const seenView = useRef(guardKey);
+  const changedAt = useRef(Number.NEGATIVE_INFINITY);
+  useEffect(() => {
+    if (seenView.current !== guardKey) {
+      seenView.current = guardKey;
+      changedAt.current = performance.now();
+    }
+  }, [guardKey]);
+  const onBodyClick = (e: MouseEvent) => {
+    if (click === null || e.detail > 1) return;
+    if (performance.now() - changedAt.current < CLICK_GUARD_MS) return;
+    onAction?.(click);
+  };
 
   const onKeyDown = (e: KeyboardEvent) => {
-    if (click === null || e.target !== e.currentTarget) return;
+    if (!isButton || click === null || e.target !== e.currentTarget) return;
     if (e.key === "Enter" || e.key === " ") {
       e.preventDefault();
       onAction?.(click);
@@ -105,17 +144,18 @@ export function PillView({ state, levelsRef, menuOpen = false, hover = false, ch
       className="pill-capsule"
       data-view={view}
       data-reduced={reduced}
+      data-dir={sized.dir}
       style={style}
-      role={click ? "button" : "group"}
-      tabIndex={click ? 0 : undefined}
+      role={isButton ? "button" : "group"}
+      tabIndex={isButton ? 0 : undefined}
       aria-label={click === "start" ? "Start dictating" : click === "toggle" ? "Stop and insert" : "Utter dictation"}
-      onClick={click ? () => onAction?.(click) : undefined}
+      onClick={click ? onBodyClick : undefined}
       onKeyDown={onKeyDown}
       onPointerDown={(e) => e.stopPropagation()}
     >
       {view === "menu" ? (
         <div className="pill-menu" role="menu" aria-label="Pill options" key="menu" onPointerMove={onMenuActivity} onPointerDown={onMenuActivity}>
-          <button className="pill-menu-item" role="menuitem" autoFocus onClick={() => { act("hide1h")(); onMenu?.(false); }}>
+          <button className="pill-menu-item" role="menuitem" onClick={() => { act("hide1h")(); onMenu?.(false); }}>
             Hide for 1 hour
           </button>
           <span className="pill-menu-sep" aria-hidden="true" />
@@ -131,16 +171,17 @@ export function PillView({ state, levelsRef, menuOpen = false, hover = false, ch
           </button>
         </div>
       ) : (
-        <div className="pill-content" key={view}>
+        <div className="pill-content" key={view === "listening" || view === "warning" || view === "locked" ? "live" : view} ref={view === "hover" ? hoverRef : undefined}>
           {view === "hover" &&
-            (keys ? (
+            (shownKeys ? (
               <>
-                <span className="pill-keys" aria-label={keys.join(" plus ")}>
-                  {keys.map((k, i) => (
-                    <kbd key={`${k}-${i}`} className="pill-key">
+                <span className="pill-keys">
+                  {shownKeys.map((k, i) => (
+                    <kbd key={`${k}-${i}`} className="pill-key" aria-hidden="true">
                       {k}
                     </kbd>
                   ))}
+                  <span className="sr-only">{shownKeys.join(" plus ")}</span>
                 </span>
                 <span className="pill-text">to dictate</span>
               </>
@@ -183,7 +224,9 @@ export function PillView({ state, levelsRef, menuOpen = false, hover = false, ch
               <svg className="pill-check" width="14" height="14" viewBox="0 0 14 14" fill="none" aria-hidden="true">
                 <path d="M2.5 7.5l3 3 6-7" stroke="currentColor" strokeWidth="1.8" strokeLinecap="round" strokeLinejoin="round" />
               </svg>
-              <span className="pill-text">{state.message ?? "Inserted"}</span>
+              <span className="pill-text" title={state.message}>
+                {state.message ?? "Inserted"}
+              </span>
             </>
           )}
 
@@ -214,12 +257,10 @@ export function Pill() {
   const [hover, setHover] = useState(false);
   const [chord, setChord] = useState<string | undefined>(undefined);
   const [flash, setFlash] = useState<string | null>(null);
-  const [episode, setEpisode] = useState(0);
-  const [doneExpired, setDoneExpired] = useState(-1);
   const [localMs, setLocalMs] = useState(0);
   const levelsRef = useRef<readonly number[]>(ZERO);
   const prevKind = useRef(IDLE.state);
-  const prevDoneMsg = useRef<string | undefined>(undefined);
+  const menuPinged = useRef(false);
   const clockStart = useRef<number | null>(null);
 
   useBackendEvent("pill://state", (next) => {
@@ -235,11 +276,6 @@ export function Pill() {
       if (!isLive) clockStart.current = null;
       prevKind.current = next.state;
     }
-    // A second "done" (new episode, or same kind with a new message) restarts the 900 ms fold.
-    if (next.state === "done" && (prev !== "done" || next.message !== prevDoneMsg.current)) {
-      setEpisode((n) => n + 1);
-    }
-    prevDoneMsg.current = next.state === "done" ? next.message : undefined;
     setState(next);
   });
   useBackendEvent("pill://levels", (l) => {
@@ -254,13 +290,6 @@ export function Pill() {
       .then((s) => setChord(s.shortcuts.dictate?.[0]))
       .catch(() => undefined); // no chord: the hover capsule says "Click to dictate"
   }, []);
-
-  // "Inserted" shows for 900 ms, then the capsule folds back to idle.
-  useEffect(() => {
-    if (episode === 0) return;
-    const t = setTimeout(() => setDoneExpired(episode), DONE_VISIBLE_MS);
-    return () => clearTimeout(t);
-  }, [episode]);
 
   const live = state.state === "listening" || state.state === "locked";
 
@@ -306,17 +335,29 @@ export function Pill() {
     return () => clearTimeout(t);
   }, [flash]);
 
-  const bumpMenu = useCallback(() => setMenuActivity((n) => n + 1), []);
+  // The window is non-activating, so Esc and blur never reach the real pill: the 3 s idle timeout
+  // (and Rust's own latch expiry) are what close a forgotten menu there. Re-send menuOpen on the
+  // first pointer activity inside the open menu in case a close/open pair was reordered in flight.
+  useEffect(() => {
+    menuPinged.current = false;
+  }, [menuOpen]);
+  const bumpMenu = useCallback(() => {
+    setMenuActivity((n) => n + 1);
+    if (!menuPinged.current) {
+      menuPinged.current = true;
+      sendLatch("menuOpen");
+    }
+  }, [sendLatch]);
 
   let shownState = state;
   if (live) shownState = { ...state, elapsedMs: effectiveElapsed(state.elapsedMs, localMs) };
-  if (state.state === "done" && doneExpired === episode) shownState = IDLE;
   // A flash must never cover live controls (stop / cancel).
   if (flash && !live) shownState = { state: "error", mode: state.mode, elapsedMs: 0, message: flash };
 
   return (
     <div
       className="pill-root"
+      style={{ paddingBottom: CAPSULE_BOTTOM_MARGIN }}
       onContextMenu={(e) => {
         e.preventDefault();
         if (menuAllowed(shownState)) setMenuOpen(true);

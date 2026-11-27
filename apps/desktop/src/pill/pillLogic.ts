@@ -6,7 +6,6 @@ export const BAR_COUNT = 9;
 export const MAX_RECORDING_MS = 20 * 60_000;
 export const WARNING_AT_MS = 19 * 60_000;
 export const TIMER_SHOWS_AT_MS = 10_000;
-export const DONE_VISIBLE_MS = 900;
 
 const clamp01 = (n: number): number => (Number.isFinite(n) ? Math.min(1, Math.max(0, n)) : 0);
 
@@ -68,7 +67,7 @@ export function effectiveElapsed(eventMs: number, localMs: number): number {
   return Math.max(Number.isFinite(eventMs) ? eventMs : 0, Number.isFinite(localMs) ? localMs : 0);
 }
 
-/** Fixed profile for prefers-reduced-motion. */
+/** Fixed profile (kept for tests and as the reduced-motion starting point). */
 export function staticBarHeights(): number[] {
   return Array.from({ length: BAR_COUNT }, (_, i) => barHeight(0.35, i));
 }
@@ -100,7 +99,7 @@ export const CAPSULE_SIZES = {
   warning: { w: 148, h: 36 },
   locked: { w: 212, h: 36 },
   thinking: { w: 72, h: 36 },
-  done: { w: 148, h: 36 },
+  done: { w: 212, h: 36 },
   error: { w: 280, h: 36 },
   menu: { w: 336, h: 40 },
 } as const satisfies Record<PillView, Size>;
@@ -120,7 +119,7 @@ export function menuAllowed(s: PillState): boolean {
 
 /** Longest chord (in characters) that still fits the 196 px hover capsule next to "to dictate". */
 const HOVER_MAX_KEYS = 3;
-const HOVER_MAX_CHARS = 13;
+const HOVER_MAX_CHARS = 11;
 
 /** Keys to show as keycaps in the hover capsule, or null to fall back to "Click to dictate". */
 export function hoverKeys(chord: string | undefined): string[] | null {
@@ -148,15 +147,18 @@ export function clickAction(view: PillView): PillAction | null {
   }
 }
 
+/** Constant while the warning shows, so a live region announces it once. */
+export const WARNING_ANNOUNCEMENT = "Recording stops in 1 minute";
+
 /** Screen-reader label for the live region. */
 export function ariaLabel(s: PillState): string {
   switch (s.state) {
     case "idle":
       return "Utter is ready";
     case "listening":
-      return "Listening";
+      return isWarning(s.elapsedMs) ? WARNING_ANNOUNCEMENT : "Listening";
     case "locked":
-      return "Listening, hands-free";
+      return isWarning(s.elapsedMs) ? WARNING_ANNOUNCEMENT : "Listening, hands-free";
     case "thinking":
       return "Working on it";
     case "done":

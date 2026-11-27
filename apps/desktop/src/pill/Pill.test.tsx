@@ -57,6 +57,7 @@ describe("pill markup", () => {
     expect(html(idle)).toContain("--h:8px");
     expect(html(locked)).toContain("--w:212px");
     expect(html(err)).toContain("--w:280px");
+    expect(html({ ...base, state: "done", message: "Copied — press Ctrl+V" })).toContain("--w:212px");
     expect(html(idle, { menuOpen: true })).toContain("--w:336px");
   });
   it("shows the dictate chord as keycaps on hover, with a fallback", () => {
@@ -65,6 +66,16 @@ describe("pill markup", () => {
     expect(withChord).toContain(">Win<");
     expect(withChord).toContain("to dictate");
     expect(html(idle, { hover: true })).toContain("Click to dictate");
+  });
+  it("puts the full done message in a title", () => {
+    expect(html({ ...base, state: "done", message: "Copied — press Ctrl+V" })).toContain("title=\"Copied — press Ctrl+V\"");
+  });
+  it("is a keyboard button for idle and listening, but a plain group when locked", () => {
+    expect(html(idle)).toContain("role=\"button\"");
+    expect(html(listening)).toContain("role=\"button\"");
+    const l = html(locked);
+    expect(l).toContain("role=\"group\"");
+    expect(l).not.toContain("tabindex");
   });
   it("shows the remaining time from 19 minutes", () => {
     expect(html({ ...listening, elapsedMs: 19 * 60_000 + 18_000 })).toContain("0:42 left");
@@ -113,6 +124,24 @@ describe("pill click routing", () => {
     onAction.mockClear();
     click(host.querySelector(".pill-btn[data-tone='muted']")!);
     expect(onAction.mock.calls).toEqual([["cancel"]]);
+  });
+  it("ignores the second click of a double-click", () => {
+    mount(idle);
+    act(() => capsule().dispatchEvent(new MouseEvent("click", { bubbles: true, detail: 2 })));
+    expect(onAction).not.toHaveBeenCalled();
+  });
+  it("ignores body clicks for 300 ms after the view changes", () => {
+    let t = 1000;
+    const spy = vi.spyOn(performance, "now").mockImplementation(() => t);
+    mount(idle);
+    mount(listening);
+    t = 1200;
+    click(capsule());
+    expect(onAction).not.toHaveBeenCalled();
+    t = 1400;
+    click(capsule());
+    expect(onAction.mock.calls).toEqual([["toggle"]]);
+    spy.mockRestore();
   });
   it("does nothing on thinking, and Retry does not bubble", () => {
     mount({ ...base, state: "thinking" });
@@ -188,6 +217,23 @@ describe("pill menu latch (container)", () => {
     act(() => root.unmount());
     expect(sent()).toEqual(["menuOpen", "menuClose"]);
     root = createRoot(host); // so afterEach can unmount
+  });
+  it("re-sends menuOpen once on the first pointer activity inside the menu", () => {
+    rightClick();
+    const move = () => act(() => host.querySelector(".pill-menu")!.dispatchEvent(new Event("pointermove", { bubbles: true })));
+    move();
+    move();
+    expect(sent()).toEqual(["menuOpen", "menuOpen"]);
+  });
+  it("ties the bottom padding to the Rust capsule margin", () => {
+    expect(host.querySelector<HTMLElement>(".pill-root")!.style.paddingBottom).toBe("8px");
+  });
+  it("leaves the done capsule to Rust (no local fold back to idle)", () => {
+    emit("pill://state", { ...base, state: "done", message: "Inserted" });
+    act(() => vi.advanceTimersByTime(5000));
+    expect(host.querySelector(".pill-capsule")?.getAttribute("data-view")).toBe("done");
+    emit("pill://state", idle);
+    expect(host.querySelector(".pill-capsule")?.getAttribute("data-view")).toBe("idle");
   });
   it("does not open the menu while thinking", () => {
     emit("pill://state", { ...base, state: "thinking" });
