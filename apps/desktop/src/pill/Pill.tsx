@@ -1,4 +1,4 @@
-import { useCallback, useEffect, useRef, useState, type CSSProperties, type RefObject } from "react";
+import { useCallback, useEffect, useRef, useState, type CSSProperties, type KeyboardEvent, type MouseEvent, type RefObject } from "react";
 import { ipc } from "../lib/ipc";
 import type { PillAction, PillState } from "../lib/types";
 import { useBackendEvent } from "../lib/useBackendEvent";
@@ -8,10 +8,13 @@ import {
   DONE_VISIBLE_MS,
   ariaLabel,
   capsuleSize,
+  clickAction,
   effectiveElapsed,
   formatRemaining,
   formatTimer,
+  hoverKeys,
   isWarning,
+  menuAllowed,
   showTimer,
   viewFor,
 } from "./pillLogic";
@@ -35,33 +38,79 @@ export function usePrefersReducedMotion(): boolean {
   return reduced;
 }
 
+/**
+ * Tells Rust the menu is open for exactly as long as `open` is true. Every way the menu can
+ * close (item, Esc, blur, idle timeout, state change) flips `open`, and unmount runs the same
+ * cleanup, so `menuClose` is sent on every path and the hit rect can never stay latched.
+ */
+export function useMenuLatch(open: boolean, send: (a: PillAction) => void): void {
+  const sendRef = useRef(send);
+  useEffect(() => {
+    sendRef.current = send;
+  });
+  useEffect(() => {
+    if (!open) return;
+    sendRef.current("menuOpen");
+    return () => sendRef.current("menuClose");
+  }, [open]);
+}
+
+const CloseIcon = () => (
+  <svg width="10" height="10" viewBox="0 0 10 10" aria-hidden="true">
+    <path d="M1.5 1.5l7 7M8.5 1.5l-7 7" stroke="currentColor" strokeWidth="1.6" strokeLinecap="round" />
+  </svg>
+);
+
 export interface PillViewProps {
   state: PillState;
   levelsRef: RefObject<readonly number[]>;
   menuOpen?: boolean;
+  /** Cursor is over the idle capsule (`pill://hover`). */
+  hover?: boolean;
+  /** The dictate chord, e.g. "Ctrl+Win", shown as keycaps in the hover capsule. */
+  chord?: string;
   reduced?: boolean;
-  onAction?: (a: PillAction, label?: string) => void;
+  onAction?: (a: PillAction) => void;
   onMenu?: (open: boolean) => void;
   /** Pointer activity inside the open menu: keeps it from auto-closing. */
   onMenuActivity?: () => void;
 }
 
 /** Presentational pill. All state comes in through props, so a harness can drive it. */
-export function PillView({ state, levelsRef, menuOpen = false, reduced = false, onAction, onMenu, onMenuActivity }: PillViewProps) {
-  const view = viewFor(state, menuOpen);
-  const size = capsuleSize(view, state.message);
+export function PillView({ state, levelsRef, menuOpen = false, hover = false, chord, reduced = false, onAction, onMenu, onMenuActivity }: PillViewProps) {
+  const view = viewFor(state, menuOpen, hover);
+  const size = capsuleSize(view);
   const act = (a: PillAction) => () => onAction?.(a);
+  /** Inner buttons handle their own click; it must not also reach the capsule's click. */
+  const own = (a: PillAction) => (e: MouseEvent) => {
+    e.stopPropagation();
+    onAction?.(a);
+  };
   const style = { "--w": `${size.w}px`, "--h": `${size.h}px` } as CSSProperties;
   const live = state.state === "listening" || state.state === "locked";
   const warn = live && isWarning(state.elapsedMs);
+  const click = clickAction(view);
+  const keys = hoverKeys(chord);
+
+  const onKeyDown = (e: KeyboardEvent) => {
+    if (click === null || e.target !== e.currentTarget) return;
+    if (e.key === "Enter" || e.key === " ") {
+      e.preventDefault();
+      onAction?.(click);
+    }
+  };
 
   return (
     <div
       className="pill-capsule"
       data-view={view}
+      data-reduced={reduced}
       style={style}
-      role="group"
-      aria-label="Utter dictation"
+      role={click ? "button" : "group"}
+      tabIndex={click ? 0 : undefined}
+      aria-label={click === "start" ? "Start dictating" : click === "toggle" ? "Stop and insert" : "Utter dictation"}
+      onClick={click ? () => onAction?.(click) : undefined}
+      onKeyDown={onKeyDown}
       onPointerDown={(e) => e.stopPropagation()}
     >
       {view === "menu" ? (
@@ -78,16 +127,30 @@ export function PillView({ state, levelsRef, menuOpen = false, reduced = false, 
             Settings
           </button>
           <button className="pill-menu-close" role="menuitem" onClick={() => onMenu?.(false)} aria-label="Close menu" title="Close">
-            <svg width="10" height="10" viewBox="0 0 10 10" aria-hidden="true">
-              <path d="M1.5 1.5l7 7M8.5 1.5l-7 7" stroke="currentColor" strokeWidth="1.6" strokeLinecap="round" />
-            </svg>
+            <CloseIcon />
           </button>
         </div>
       ) : (
         <div className="pill-content" key={view}>
+          {view === "hover" &&
+            (keys ? (
+              <>
+                <span className="pill-keys" aria-label={keys.join(" plus ")}>
+                  {keys.map((k, i) => (
+                    <kbd key={`${k}-${i}`} className="pill-key">
+                      {k}
+                    </kbd>
+                  ))}
+                </span>
+                <span className="pill-text">to dictate</span>
+              </>
+            ) : (
+              <span className="pill-text">Click to dictate</span>
+            ))}
+
           {(view === "listening" || view === "warning" || view === "locked") && (
             <>
-              <span className="pill-dot" data-lock={state.state === "locked"} aria-hidden="true" />
+              <span className="pill-dot" aria-hidden="true" />
               <Bars levelsRef={levelsRef} reduced={reduced} />
               {warn ? (
                 <span className="pill-warn" title="Recording stops at 20 minutes">
@@ -100,15 +163,13 @@ export function PillView({ state, levelsRef, menuOpen = false, reduced = false, 
               )}
               {view === "locked" && (
                 <>
-                  <button className="pill-btn" data-tone="stop" onClick={act("stop")} aria-label="Stop and insert" title="Stop">
+                  <button className="pill-btn" data-tone="stop" onClick={own("stop")} aria-label="Stop and insert" title="Stop">
                     <svg width="10" height="10" viewBox="0 0 10 10" aria-hidden="true">
                       <rect x="1" y="1" width="8" height="8" rx="1.5" fill="currentColor" />
                     </svg>
                   </button>
-                  <button className="pill-btn" data-tone="muted" onClick={act("cancel")} aria-label="Cancel" title="Cancel">
-                    <svg width="10" height="10" viewBox="0 0 10 10" aria-hidden="true">
-                      <path d="M1.5 1.5l7 7M8.5 1.5l-7 7" stroke="currentColor" strokeWidth="1.6" strokeLinecap="round" />
-                    </svg>
+                  <button className="pill-btn" data-tone="muted" onClick={own("cancel")} aria-label="Cancel" title="Cancel">
+                    <CloseIcon />
                   </button>
                 </>
               )}
@@ -132,7 +193,7 @@ export function PillView({ state, levelsRef, menuOpen = false, reduced = false, 
                 {state.message ?? "Something went wrong"}
               </span>
               {state.retryable === true && (
-                <button className="pill-chip" onClick={act("retry")}>
+                <button className="pill-chip" onClick={own("retry")}>
                   Retry
                 </button>
               )}
@@ -150,6 +211,8 @@ export function Pill() {
   const [state, setState] = useState<PillState>(IDLE);
   const [menuOpen, setMenuOpen] = useState(false);
   const [menuActivity, setMenuActivity] = useState(0);
+  const [hover, setHover] = useState(false);
+  const [chord, setChord] = useState<string | undefined>(undefined);
   const [flash, setFlash] = useState<string | null>(null);
   const [episode, setEpisode] = useState(0);
   const [doneExpired, setDoneExpired] = useState(-1);
@@ -182,6 +245,15 @@ export function Pill() {
   useBackendEvent("pill://levels", (l) => {
     levelsRef.current = l;
   });
+  useBackendEvent("pill://hover", (h) => setHover(h.hover));
+  useBackendEvent("settings://changed", (s) => setChord(s.shortcuts.dictate?.[0]));
+
+  useEffect(() => {
+    ipc
+      .getSettings()
+      .then((s) => setChord(s.shortcuts.dictate?.[0]))
+      .catch(() => undefined); // no chord: the hover capsule says "Click to dictate"
+  }, []);
 
   // "Inserted" shows for 900 ms, then the capsule folds back to idle.
   useEffect(() => {
@@ -204,12 +276,21 @@ export function Pill() {
     };
   }, [live]);
 
+  const onAction = useCallback((a: PillAction) => {
+    ipc.pillAction(a).catch((e: unknown) => setFlash(typeof e === "string" ? e : "Couldn't do that"));
+  }, []);
+  // Latch bookkeeping must never surface as an error flash.
+  const sendLatch = useCallback((a: PillAction) => {
+    ipc.pillAction(a).catch(() => undefined);
+  }, []);
+  useMenuLatch(menuOpen, sendLatch);
+
   // Menu: auto-closes after 3 s without pointer activity; Esc / blur also close it.
   useEffect(() => {
     if (!menuOpen) return;
     const t = setTimeout(() => setMenuOpen(false), MENU_IDLE_CLOSE_MS);
     const close = () => setMenuOpen(false);
-    const key = (e: KeyboardEvent) => e.key === "Escape" && close();
+    const key = (e: globalThis.KeyboardEvent) => e.key === "Escape" && close();
     window.addEventListener("keydown", key);
     window.addEventListener("blur", close);
     return () => {
@@ -225,9 +306,6 @@ export function Pill() {
     return () => clearTimeout(t);
   }, [flash]);
 
-  const onAction = useCallback((a: PillAction) => {
-    ipc.pillAction(a).catch((e: unknown) => setFlash(typeof e === "string" ? e : "Couldn't do that"));
-  }, []);
   const bumpMenu = useCallback(() => setMenuActivity((n) => n + 1), []);
 
   let shownState = state;
@@ -241,7 +319,7 @@ export function Pill() {
       className="pill-root"
       onContextMenu={(e) => {
         e.preventDefault();
-        setMenuOpen(true);
+        if (menuAllowed(shownState)) setMenuOpen(true);
       }}
       onPointerDown={() => setMenuOpen(false)}
     >
@@ -249,6 +327,8 @@ export function Pill() {
         state={shownState}
         levelsRef={levelsRef}
         menuOpen={menuOpen}
+        hover={hover}
+        chord={chord}
         reduced={reduced}
         onAction={onAction}
         onMenu={setMenuOpen}

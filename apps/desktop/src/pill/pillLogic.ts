@@ -1,17 +1,14 @@
 // Pure helpers for the pill: timer text, level smoothing, capsule geometry.
-import type { PillState } from "../lib/types";
+import { formatChord } from "../lib/format";
+import type { PillAction, PillState } from "../lib/types";
 
-export const BAR_COUNT = 12;
+export const BAR_COUNT = 9;
 export const MAX_RECORDING_MS = 20 * 60_000;
 export const WARNING_AT_MS = 19 * 60_000;
 export const TIMER_SHOWS_AT_MS = 10_000;
 export const DONE_VISIBLE_MS = 900;
 
 const clamp01 = (n: number): number => (Number.isFinite(n) ? Math.min(1, Math.max(0, n)) : 0);
-
-function clamp(n: number, lo: number, hi: number): number {
-  return Math.min(hi, Math.max(lo, n));
-}
 
 /** m:ss, e.g. 12_000 -> "0:12", 61_000 -> "1:01". Negative or NaN -> "0:00". */
 export function formatTimer(ms: number): string {
@@ -52,8 +49,8 @@ export function envelope(i: number, n = BAR_COUNT): number {
   return 0.6 + 0.4 * Math.sin((Math.PI * (i + 0.5)) / n);
 }
 
-export const BAR_MIN_PX = 3;
-export const BAR_MAX_PX = 22;
+export const BAR_MIN_PX = 4;
+export const BAR_MAX_PX = 20;
 
 /** Level 0..1 -> bar height in px. Slight curve so quiet speech still moves. */
 export function barHeight(level: number, i: number): number {
@@ -76,12 +73,13 @@ export function staticBarHeights(): number[] {
   return Array.from({ length: BAR_COUNT }, (_, i) => barHeight(0.35, i));
 }
 
-export type PillView = "idle" | "listening" | "locked" | "thinking" | "done" | "error" | "warning" | "menu";
+export type PillView = "idle" | "hover" | "listening" | "locked" | "thinking" | "done" | "error" | "warning" | "menu";
 
-/** The visual a state maps to. The 19-minute warning replaces the timer. */
-export function viewFor(s: PillState, menuOpen: boolean): PillView {
+/** The visual a state maps to. The 19-minute warning replaces the timer; hover only affects idle. */
+export function viewFor(s: PillState, menuOpen: boolean, hover = false): PillView {
   if (menuOpen) return "menu";
   if (s.state === "listening" && isWarning(s.elapsedMs)) return "warning";
+  if (s.state === "idle" && hover) return "hover";
   return s.state;
 }
 
@@ -90,31 +88,63 @@ export interface Size {
   h: number;
 }
 
-const CHAR_PX = 6.4;
+/**
+ * Capsule size in logical px, bottom-centred in the 360x72 window. MUST mirror
+ * `pill_capsule_rect` in src-tauri/src/windows.rs (a test parses that file). The menu is drawn
+ * inside Rust's 340x40 menu hit rect.
+ */
+export const CAPSULE_SIZES = {
+  idle: { w: 44, h: 8 },
+  hover: { w: 196, h: 32 },
+  listening: { w: 148, h: 36 },
+  warning: { w: 148, h: 36 },
+  locked: { w: 212, h: 36 },
+  thinking: { w: 72, h: 36 },
+  done: { w: 148, h: 36 },
+  error: { w: 280, h: 36 },
+  menu: { w: 336, h: 40 },
+} as const satisfies Record<PillView, Size>;
 
-/** Capsule size in logical px. The window is 360x72, so everything stays <= 340 wide. */
-export function capsuleSize(view: PillView, message?: string): Size {
+export const WINDOW_SIZE: Size = { w: 360, h: 72 };
+/** Gap between the capsule and the window's bottom edge (Rust CAPSULE_BOTTOM_MARGIN). */
+export const CAPSULE_BOTTOM_MARGIN = 8;
+
+export function capsuleSize(view: PillView): Size {
+  return CAPSULE_SIZES[view];
+}
+
+/** Rust's menu_allowed: no menu during the brief thinking / done flashes. */
+export function menuAllowed(s: PillState): boolean {
+  return s.state !== "thinking" && s.state !== "done";
+}
+
+/** Longest chord (in characters) that still fits the 196 px hover capsule next to "to dictate". */
+const HOVER_MAX_KEYS = 3;
+const HOVER_MAX_CHARS = 13;
+
+/** Keys to show as keycaps in the hover capsule, or null to fall back to "Click to dictate". */
+export function hoverKeys(chord: string | undefined): string[] | null {
+  const keys = formatChord(chord);
+  if (keys.length === 0 || keys.length > HOVER_MAX_KEYS) return null;
+  if (keys.join("").length > HOVER_MAX_CHARS) return null;
+  return keys;
+}
+
+/**
+ * What a click on the capsule body does: start from idle, stop-and-insert while live,
+ * nothing otherwise (thinking, done, error, menu).
+ */
+export function clickAction(view: PillView): PillAction | null {
   switch (view) {
     case "idle":
-      return { w: 40, h: 8 };
+    case "hover":
+      return "start";
     case "listening":
-      return { w: 200, h: 40 };
     case "warning":
-      return { w: 236, h: 40 };
     case "locked":
-      return { w: 252, h: 40 };
-    case "thinking":
-      return { w: 92, h: 40 };
-    case "done": {
-      const len = (message ?? "Inserted").length;
-      return { w: clamp(Math.round(68 + len * CHAR_PX), 128, 260), h: 40 };
-    }
-    case "error": {
-      const len = (message ?? "Something went wrong").length;
-      return { w: clamp(Math.round(112 + len * CHAR_PX), 200, 340), h: 40 };
-    }
-    case "menu":
-      return { w: 348, h: 40 };
+      return "toggle";
+    default:
+      return null;
   }
 }
 

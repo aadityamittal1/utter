@@ -5,7 +5,7 @@ const STATIC = Array.from({ length: BAR_COUNT }, (_, i) => barScale(0.35, i));
 const EPS = 0.002;
 
 /**
- * Twelve rounded bars driven by mic level. Mounted only while listening, it runs one
+ * Nine rounded bars driven by mic level. Mounted only while listening, it runs one
  * requestAnimationFrame loop that eases toward `levelsRef.current` and writes
  * transform: scaleY straight to the elements: no React renders, no layout.
  * With reduced motion the bars hold a fixed profile and no loop runs.
