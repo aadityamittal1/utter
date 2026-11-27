@@ -16,6 +16,7 @@ import type {
   PillAction,
   Settings,
   Snippet,
+  SystemAppearance,
   Transform,
   Usage,
 } from "./types";
@@ -50,6 +51,7 @@ export const ipc = {
   updateSettings: (settings: Settings) => call<Settings>("update_settings", { settings }),
   resetShortcuts: () => call<Settings>("reset_shortcuts"),
   completeOnboarding: () => call<void>("complete_onboarding"),
+  getSystemAppearance: () => call<SystemAppearance>("get_system_appearance"),
   appInfo: () => call<{ version: string }>("app_info"),
 
   // api key

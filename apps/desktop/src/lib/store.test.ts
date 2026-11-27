@@ -1,13 +1,16 @@
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
+const danger = vi.hoisted(() => vi.fn());
+vi.mock("@heroui/react", () => ({ toast: { info: vi.fn(), success: vi.fn(), danger } }));
+
 import { ipc } from "./ipc";
-import { useNav, useSettings, useToasts } from "./store";
+import { useNav, useSettings } from "./store";
 import type { Settings } from "./types";
 
 const delay = (ms: number) => new Promise((r) => setTimeout(r, ms));
 
 describe("settings store", () => {
   beforeEach(async () => {
-    useToasts.setState({ items: [] });
+    danger.mockClear();
     await useSettings.getState().load();
   });
   afterEach(() => vi.restoreAllMocks());
@@ -45,7 +48,7 @@ describe("settings store", () => {
     const now = useSettings.getState().settings!;
     expect(now.sounds).toBe(before.sounds); // A rolled back
     expect(now.showPill).toBe(!before.showPill); // B kept
-    expect(useToasts.getState().items.some((t) => t.kind === "error" && t.message === "Disk is full")).toBe(true);
+    expect(danger).toHaveBeenCalledWith("Disk is full", expect.anything());
   });
 
   it("keeps a later edit when settings://changed for an earlier save arrives mid-flight", async () => {
@@ -102,5 +105,19 @@ describe("nav store", () => {
     useNav.getState().navigate("settings");
     expect(useNav.getState().page).toBe("settings");
     expect(location.hash).toBe("#settings");
+  });
+
+  it("openSettings navigates to the settings page", () => {
+    useNav.getState().navigate("home");
+    useNav.getState().openSettings();
+    expect(useNav.getState().page).toBe("settings");
+  });
+
+  it("toggles the sidebar", () => {
+    const before = useNav.getState().sidebarCollapsed;
+    useNav.getState().toggleSidebar();
+    expect(useNav.getState().sidebarCollapsed).toBe(!before);
+    useNav.getState().toggleSidebar();
+    expect(useNav.getState().sidebarCollapsed).toBe(before);
   });
 });

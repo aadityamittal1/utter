@@ -26,6 +26,24 @@ export interface CategoryRule {
 }
 
 export type ThemePref = "system" | "light" | "dark";
+export type AccentSource = "utter" | "windows";
+
+/** Windows accent shades as #rrggbb (UISettings.GetColorValue). */
+export interface SystemAccent {
+  accent: string;
+  light1: string;
+  light2: string;
+  light3: string;
+  dark1: string;
+  dark2: string;
+  dark3: string;
+}
+export type BackdropKind = "mica" | "solid";
+export interface SystemAppearance {
+  accent: SystemAccent | null;
+  textScale: number;
+  backdrop: BackdropKind;
+}
 export type HistoryRetention = "forever" | "day" | "never";
 
 export interface Settings {
@@ -47,6 +65,7 @@ export interface Settings {
   showPill: boolean;
   launchAtLogin: boolean;
   theme: ThemePref;
+  accentSource: AccentSource;
   historyRetention: HistoryRetention;
   keepAudio: boolean;
   categoryRules: CategoryRule[];
@@ -160,6 +179,9 @@ export interface EventMap {
   "history://changed": undefined;
   "settings://changed": Settings;
   "hub://navigate": { page: string };
+  "system://accent": SystemAccent;
+  "system://text-scale": { factor: number };
+  "system://backdrop": { kind: BackdropKind };
 }
 export type EventName = keyof EventMap;
 
