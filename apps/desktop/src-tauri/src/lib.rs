@@ -8,6 +8,8 @@ pub mod context;
 pub mod hotkeys;
 pub mod insert;
 pub mod llm;
+#[cfg(target_os = "windows")]
+pub mod pill_windows;
 pub mod pipeline;
 pub mod secrets;
 pub mod settings;
@@ -46,6 +48,8 @@ fn setup(app: &mut tauri::App) -> Result<(), Box<dyn std::error::Error>> {
     tray::create(&handle)?;
     let pill_now = st.pill.lock().clone();
     windows::sync_pill(&handle, &pill_now, st.pill_allowed());
+    #[cfg(target_os = "windows")]
+    pill_windows::start_keeper(handle.clone());
 
     // Keyboard hook -> session worker.
     let (ktx, krx) = mpsc::channel::<RawKey>();

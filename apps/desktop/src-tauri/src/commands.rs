@@ -1,10 +1,11 @@
 //! IPC commands: settings, API key, models, audio, shortcuts, pill. Data commands (history,
 //! dictionary, snippets, transforms, notes, stats) live in `commands_data`.
 
-use crate::app_state::AppState;
+use crate::app_state::{AppState, PillKind};
 use crate::audio::capture::list_input_devices;
 use crate::hotkeys::action::Action;
 use crate::hotkeys::hook_windows::{cancel_capture, capture_next_chord};
+use crate::hotkeys::matcher::HotkeyEvent;
 use crate::llm::client::{ClaudeClient, LlmError};
 use crate::pipeline::machine::PillInput;
 use crate::pipeline::session::SessionMsg;
@@ -161,7 +162,11 @@ pub async fn reset_shortcuts(st: St<'_>) -> CmdResult<Settings> {
 
 #[tauri::command]
 pub async fn complete_onboarding(st: St<'_>) -> CmdResult<()> {
-    update_settings_with(&st, |s| s.onboarded = true).map(|_| ())
+    update_settings_with(&st, |s| s.onboarded = true)?;
+    // The resting pill is part of a finished setup: make sure it is up (idempotent).
+    let cur = st.pill.lock().clone();
+    crate::windows::sync_pill(&st.app, &cur, st.pill_allowed());
+    Ok(())
 }
 
 #[tauri::command]
@@ -441,14 +446,31 @@ pub fn stop_shortcut_capture() {
 
 // ---- pill ----
 
+/// The session message a pill click action turns into, given the pill's current state.
+/// `stop`/`cancel` always forward (the state machine ignores them when idle); `start` is the
+/// HandsFree hotkey press (idle pill only); `toggle` stops and inserts a live dictation.
+pub fn pill_session_msg(action: &str, kind: PillKind) -> Option<SessionMsg> {
+    match action {
+        "stop" => Some(SessionMsg::Pill(PillInput::Stop)),
+        "cancel" => Some(SessionMsg::Pill(PillInput::Cancel)),
+        "start" if kind == PillKind::Idle => {
+            Some(SessionMsg::Hotkey(HotkeyEvent::Pressed(Action::HandsFree)))
+        }
+        "toggle" if matches!(kind, PillKind::Listening | PillKind::Locked) => {
+            Some(SessionMsg::Pill(PillInput::Stop))
+        }
+        _ => None,
+    }
+}
+
 #[tauri::command]
 pub fn pill_action(st: St, action: String) -> CmdResult<()> {
     match action.as_str() {
-        "stop" => {
-            let _ = st.session_tx.send(SessionMsg::Pill(PillInput::Stop));
-        }
-        "cancel" => {
-            let _ = st.session_tx.send(SessionMsg::Pill(PillInput::Cancel));
+        "stop" | "cancel" | "start" | "toggle" => {
+            let kind = st.pill.lock().state;
+            if let Some(msg) = pill_session_msg(&action, kind) {
+                let _ = st.session_tx.send(msg);
+            }
         }
         "retry" => {
             // Only while the current pill is a retryable transcription failure.
@@ -477,7 +499,6 @@ pub fn pill_action(st: St, action: String) -> CmdResult<()> {
 
 /// Pill "retry": re-run the failed recording and paste the result where focus is now.
 fn retry_into_focus(st: &Arc<AppState>, id: i64) {
-    use crate::app_state::PillKind;
     st.set_pill(PillKind::Thinking, "dictate", 0, None);
     match crate::pipeline::retry::retry_history(st, id) {
         Ok(item) => {
@@ -500,6 +521,56 @@ fn retry_into_focus(st: &Arc<AppState>, id: i64) {
 mod tests {
     use super::*;
 
+    #[test]
+    fn pill_start_is_the_hands_free_hotkey_press_and_only_when_idle() {
+        let m = pill_session_msg("start", PillKind::Idle);
+        assert!(matches!(
+            m,
+            Some(SessionMsg::Hotkey(HotkeyEvent::Pressed(Action::HandsFree)))
+        ));
+        for k in [
+            PillKind::Listening,
+            PillKind::Locked,
+            PillKind::Thinking,
+            PillKind::Done,
+            PillKind::Error,
+        ] {
+            assert!(pill_session_msg("start", k).is_none(), "{k:?}");
+        }
+    }
+
+    #[test]
+    fn pill_toggle_stops_only_a_live_dictation() {
+        for k in [PillKind::Listening, PillKind::Locked] {
+            assert!(matches!(
+                pill_session_msg("toggle", k),
+                Some(SessionMsg::Pill(PillInput::Stop))
+            ));
+        }
+        for k in [
+            PillKind::Idle,
+            PillKind::Thinking,
+            PillKind::Done,
+            PillKind::Error,
+        ] {
+            assert!(pill_session_msg("toggle", k).is_none(), "{k:?}");
+        }
+    }
+
+    #[test]
+    fn pill_stop_and_cancel_forward_and_others_are_not_session_messages() {
+        assert!(matches!(
+            pill_session_msg("stop", PillKind::Locked),
+            Some(SessionMsg::Pill(PillInput::Stop))
+        ));
+        assert!(matches!(
+            pill_session_msg("cancel", PillKind::Listening),
+            Some(SessionMsg::Pill(PillInput::Cancel))
+        ));
+        for a in ["retry", "hide1h", "openHub", "openSettings", "bogus"] {
+            assert!(pill_session_msg(a, PillKind::Idle).is_none(), "{a}");
+        }
+    }
     #[test]
     fn llm_messages_show_status_and_api_text() {
         assert_eq!(

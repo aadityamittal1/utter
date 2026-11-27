@@ -19,8 +19,8 @@ use super::dsp;
 
 const PREROLL_MS: usize = 300;
 const LEVEL_TICK: Duration = Duration::from_millis(33);
-const LEVEL_WINDOW_SAMPLES: usize = 960; // 60 ms at 16 kHz
-const LEVEL_BARS: usize = 12;
+const LEVEL_WINDOW_SAMPLES: usize = 528; // last 33 ms at 16 kHz
+const LEVEL_BARS: usize = 9;
 
 type LevelSink = Box<dyn Fn(Vec<f32>) + Send>;
 
@@ -150,7 +150,7 @@ impl Recorder {
         self.request(Cmd::Stop).unwrap_or_default()
     }
 
-    /// Called ~30x/s with 12 level bars (0..1) while recording.
+    /// Called ~30x/s with 9 level bars (0..1) while recording.
     pub fn set_level_sink(&self, f: Box<dyn Fn(Vec<f32>) + Send>) {
         let _ = lock(&self.tx).send(Cmd::Sink(f));
     }
@@ -470,7 +470,7 @@ mod tests {
         let n = std::sync::Arc::new(std::sync::atomic::AtomicUsize::new(0));
         let n2 = n.clone();
         rec.set_level_sink(Box::new(move |b| {
-            assert_eq!(b.len(), 12);
+            assert_eq!(b.len(), 9);
             n2.fetch_add(1, std::sync::atomic::Ordering::SeqCst);
             panic!("sink panics must not kill the audio thread");
         }));
