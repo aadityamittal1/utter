@@ -98,7 +98,9 @@ jobs:
             "CC=clang-cl",
             "CXX=clang-cl",
             # clang-cl needs exceptions enabled explicitly; the cmake crate drops MSVC's default /EHsc.
-            "CXXFLAGS=/EHsc",
+            # Newer MSVC STL headers (VS 18, MSVC 14.52+) reject clang older than 22 with STL1000;
+            # the runner's LLVM can lag behind, so allow the mismatch (Microsoft's documented escape hatch).
+            "CXXFLAGS=/EHsc /D_ALLOW_COMPILER_AND_STL_VERSION_MISMATCH",
             "LIBCLANG_PATH=$llvm"
           ) | Out-File -FilePath $env:GITHUB_ENV -Append -Encoding utf8
 
