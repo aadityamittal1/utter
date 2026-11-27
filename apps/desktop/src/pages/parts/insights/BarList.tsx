@@ -8,7 +8,7 @@ export interface BarItem {
 }
 
 /** Below this share the percentage no longer fits inside the bar and sits after it. */
-const INSIDE_MIN = 12;
+const INSIDE_MIN = 16;
 
 /**
  * Horizontal bars sized by share of `total` (true magnitude, no minimum width): ember fill,
