@@ -5,8 +5,8 @@
 //! The `UISettings` object and its event registrations live for the whole app run.
 
 use crate::system::{
-    clamp_text_scale, color_to_hex, BackdropPayload, SystemAccent, TextScalePayload, EVENT_ACCENT,
-    EVENT_BACKDROP, EVENT_TEXT_SCALE,
+    clamp_text_scale, color_to_hex, should_emit, BackdropPayload, SystemAccent, TextScalePayload,
+    EVENT_ACCENT, EVENT_BACKDROP, EVENT_TEXT_SCALE,
 };
 use ::windows::Foundation::TypedEventHandler;
 use ::windows::UI::Color;
@@ -15,18 +15,8 @@ use parking_lot::Mutex;
 use std::sync::OnceLock;
 use tauri::{AppHandle, Emitter};
 
-/// Keeps the `UISettings` (and with it the handlers) alive.
-struct Watcher {
-    _settings: UISettings,
-}
-
-// SAFETY: `UISettings` is an agile WinRT object (callable from any thread); we only hold it
-// to keep its event registrations alive and never touch it after construction.
-unsafe impl Send for Watcher {}
-// SAFETY: see above; no access through a shared reference at all.
-unsafe impl Sync for Watcher {}
-
-static WATCHER: OnceLock<Watcher> = OnceLock::new();
+/// Keeps the `UISettings` (and with it the event registrations) alive for the app run.
+static WATCHER: OnceLock<UISettings> = OnceLock::new();
 
 fn hex(c: Color) -> String {
     color_to_hex(c.R, c.G, c.B)
@@ -62,6 +52,9 @@ pub fn read() -> (Option<SystemAccent>, f64) {
 
 /// Subscribe to accent and text-scale changes and emit the initial backdrop event.
 pub fn start(app: AppHandle) {
+    // Compatibility event only: the hub is always opaque ("solid"); the command carries it too.
+    let _ = app.emit(EVENT_BACKDROP, BackdropPayload { kind: "solid" });
+
     let ui = match UISettings::new() {
         Ok(ui) => ui,
         Err(e) => {
@@ -70,19 +63,17 @@ pub fn start(app: AppHandle) {
         }
     };
 
-    let _ = app.emit(EVENT_BACKDROP, BackdropPayload { kind: "solid" });
-
     // ColorValuesChanged fires several times per change (and for light/dark switches too):
-    // only emit when the accent actually differs from what we last sent.
+    // only emit when the accent actually differs from what we last sent. The decision is made
+    // under the lock, the emit happens after it is released.
     let last_accent: Mutex<Option<SystemAccent>> = Mutex::new(read_accent(&ui));
     let app_c = app.clone();
     let color_handler = TypedEventHandler::new(move |_, _| {
         if let Ok(fresh) = UISettings::new() {
             if let Some(accent) = read_accent(&fresh) {
-                let mut last = last_accent.lock();
-                if last.as_ref() != Some(&accent) {
+                let emit = should_emit(&mut last_accent.lock(), accent.clone());
+                if emit {
                     let _ = app_c.emit(EVENT_ACCENT, &accent);
-                    *last = Some(accent);
                 }
             }
         }
@@ -92,15 +83,14 @@ pub fn start(app: AppHandle) {
         log::warn!("could not subscribe to ColorValuesChanged: {e}");
     }
 
-    let last_scale = Mutex::new(read_scale(&ui));
+    let last_scale = Mutex::new(Some(read_scale(&ui)));
     let app_s = app.clone();
     let scale_handler = TypedEventHandler::new(move |_, _| {
         if let Ok(fresh) = UISettings::new() {
             let factor = read_scale(&fresh);
-            let mut last = last_scale.lock();
-            if (*last - factor).abs() > f64::EPSILON {
+            let emit = should_emit(&mut last_scale.lock(), factor);
+            if emit {
                 let _ = app_s.emit(EVENT_TEXT_SCALE, TextScalePayload { factor });
-                *last = factor;
             }
         }
         Ok(())
@@ -109,5 +99,5 @@ pub fn start(app: AppHandle) {
         log::warn!("could not subscribe to TextScaleFactorChanged: {e}");
     }
 
-    let _ = WATCHER.set(Watcher { _settings: ui });
+    let _ = WATCHER.set(ui);
 }

@@ -59,6 +59,17 @@ pub fn clamp_text_scale(f: f64) -> f64 {
     }
 }
 
+/// Dedupe helper for change handlers: true (and `last` updated) when `fresh` differs from the
+/// last emitted value or nothing has been emitted yet.
+pub fn should_emit<T: PartialEq>(last: &mut Option<T>, fresh: T) -> bool {
+    if last.as_ref() == Some(&fresh) {
+        false
+    } else {
+        *last = Some(fresh);
+        true
+    }
+}
+
 /// Current appearance as the UI should see it.
 pub fn current() -> SystemAppearance {
     #[cfg(target_os = "windows")]
@@ -103,18 +114,43 @@ mod tests {
         assert_eq!(clamp_text_scale(f64::INFINITY), 2.25);
     }
 
+    fn sample_accent() -> SystemAccent {
+        SystemAccent {
+            accent: "#0078d4".into(),
+            light1: "#60cdff".into(),
+            light2: "#0093f9".into(),
+            light3: "#0067c0".into(),
+            dark1: "#005a9e".into(),
+            dark2: "#003e6b".into(),
+            dark3: "#001e36".into(),
+        }
+    }
+
+    #[test]
+    fn should_emit_first_unchanged_changed() {
+        let mut last = None;
+        assert!(should_emit(&mut last, 1.5), "first value emits");
+        assert!(!should_emit(&mut last, 1.5), "unchanged does not");
+        assert!(should_emit(&mut last, 2.0), "changed emits");
+        assert_eq!(last, Some(2.0));
+        assert!(!should_emit(&mut last, 2.0));
+    }
+
+    #[test]
+    fn accent_serializes_exactly_the_seven_camel_case_keys() {
+        let v = serde_json::to_value(sample_accent()).unwrap();
+        let mut keys: Vec<_> = v.as_object().unwrap().keys().cloned().collect();
+        keys.sort();
+        assert_eq!(
+            keys,
+            ["accent", "dark1", "dark2", "dark3", "light1", "light2", "light3"]
+        );
+    }
+
     #[test]
     fn serializes_per_ipc_contract() {
         let a = SystemAppearance {
-            accent: Some(SystemAccent {
-                accent: "#0078d4".into(),
-                light1: "#1".into(),
-                light2: "#2".into(),
-                light3: "#3".into(),
-                dark1: "#4".into(),
-                dark2: "#5".into(),
-                dark3: "#6".into(),
-            }),
+            accent: Some(sample_accent()),
             text_scale: 1.25,
             backdrop: "solid",
         };
@@ -122,7 +158,7 @@ mod tests {
         assert_eq!(v["textScale"], 1.25);
         assert_eq!(v["backdrop"], "solid");
         assert_eq!(v["accent"]["accent"], "#0078d4");
-        assert_eq!(v["accent"]["dark3"], "#6");
+        assert_eq!(v["accent"]["dark3"], "#001e36");
         let none = SystemAppearance {
             accent: None,
             text_scale: 1.0,
