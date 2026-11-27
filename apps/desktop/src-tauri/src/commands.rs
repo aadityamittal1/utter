@@ -1,7 +1,7 @@
 //! IPC commands: settings, API key, models, audio, shortcuts, pill. Data commands (history,
 //! dictionary, snippets, transforms, notes, stats) live in `commands_data`.
 
-use crate::app_state::AppState;
+use crate::app_state::{AppState, PillKind};
 use crate::audio::capture::list_input_devices;
 use crate::hotkeys::action::Action;
 use crate::hotkeys::hook_windows::{cancel_capture, capture_next_chord};
@@ -161,7 +161,11 @@ pub async fn reset_shortcuts(st: St<'_>) -> CmdResult<Settings> {
 
 #[tauri::command]
 pub async fn complete_onboarding(st: St<'_>) -> CmdResult<()> {
-    update_settings_with(&st, |s| s.onboarded = true).map(|_| ())
+    update_settings_with(&st, |s| s.onboarded = true)?;
+    // The resting pill is part of a finished setup: make sure it is up (idempotent).
+    let cur = st.pill.lock().clone();
+    crate::windows::sync_pill(&st.app, &cur, st.pill_allowed());
+    Ok(())
 }
 
 #[tauri::command]
@@ -441,14 +445,25 @@ pub fn stop_shortcut_capture() {
 
 // ---- pill ----
 
+/// The session message a pill click action turns into. `toggle` is an unconditional stop (the
+/// state machine ignores it when idle), `start` is decided on the worker; neither depends on
+/// the pill state, which lags the session by `SHOW_AFTER`.
+pub fn pill_session_msg(action: &str) -> Option<SessionMsg> {
+    match action {
+        "stop" | "toggle" => Some(SessionMsg::Pill(PillInput::Stop)),
+        "cancel" => Some(SessionMsg::Pill(PillInput::Cancel)),
+        "start" => Some(SessionMsg::PillStart),
+        _ => None,
+    }
+}
+
 #[tauri::command]
 pub fn pill_action(st: St, action: String) -> CmdResult<()> {
     match action.as_str() {
-        "stop" => {
-            let _ = st.session_tx.send(SessionMsg::Pill(PillInput::Stop));
-        }
-        "cancel" => {
-            let _ = st.session_tx.send(SessionMsg::Pill(PillInput::Cancel));
+        "stop" | "cancel" | "start" | "toggle" => {
+            if let Some(msg) = pill_session_msg(&action) {
+                let _ = st.session_tx.send(msg);
+            }
         }
         "retry" => {
             // Only while the current pill is a retryable transcription failure.
@@ -468,6 +483,14 @@ pub fn pill_action(st: St, action: String) -> CmdResult<()> {
                 crate::windows::sync_pill(&state.app, &cur, state.pill_allowed());
             });
         }
+        // The pill UI shows its menu inside the 340x40 menu rect; keep that rect interactive.
+        "menuOpen" => {
+            let kind = st.pill.lock().state;
+            if crate::windows::menu_allowed(kind) {
+                crate::windows::MENU_OPEN.store(true, std::sync::atomic::Ordering::Relaxed);
+            }
+        }
+        "menuClose" => crate::windows::MENU_OPEN.store(false, std::sync::atomic::Ordering::Relaxed),
         "openHub" => crate::windows::show_hub(&st.app, None),
         "openSettings" => crate::windows::show_hub(&st.app, Some("settings")),
         _ => return Err("Unknown pill action".into()),
@@ -477,7 +500,6 @@ pub fn pill_action(st: St, action: String) -> CmdResult<()> {
 
 /// Pill "retry": re-run the failed recording and paste the result where focus is now.
 fn retry_into_focus(st: &Arc<AppState>, id: i64) {
-    use crate::app_state::PillKind;
     st.set_pill(PillKind::Thinking, "dictate", 0, None);
     match crate::pipeline::retry::retry_history(st, id) {
         Ok(item) => {
@@ -500,6 +522,33 @@ fn retry_into_focus(st: &Arc<AppState>, id: i64) {
 mod tests {
     use super::*;
 
+    #[test]
+    fn pill_actions_map_to_session_messages_regardless_of_pill_state() {
+        assert!(matches!(
+            pill_session_msg("start"),
+            Some(SessionMsg::PillStart)
+        ));
+        for a in ["stop", "toggle"] {
+            assert!(matches!(
+                pill_session_msg(a),
+                Some(SessionMsg::Pill(PillInput::Stop))
+            ));
+        }
+        assert!(matches!(
+            pill_session_msg("cancel"),
+            Some(SessionMsg::Pill(PillInput::Cancel))
+        ));
+        for a in [
+            "retry",
+            "hide1h",
+            "openHub",
+            "openSettings",
+            "menuOpen",
+            "bogus",
+        ] {
+            assert!(pill_session_msg(a).is_none(), "{a}");
+        }
+    }
     #[test]
     fn llm_messages_show_status_and_api_text() {
         assert_eq!(

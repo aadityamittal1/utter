@@ -171,7 +171,8 @@ pub fn normalize_gain(s: &mut [f32]) {
     }
 }
 
-/// `n` RMS chunks of `window`, mapped from -60..-10 dBFS onto 0..1.
+/// `n` RMS chunks of `window`, mapped from -55..-10 dBFS onto 0..1 and curved with `pow 0.7`
+/// so quiet speech still moves the bars (UI v2 spec section 3).
 pub fn level_bars(window: &[f32], n: usize) -> Vec<f32> {
     (0..n)
         .map(|i| {
@@ -185,7 +186,7 @@ pub fn level_bars(window: &[f32], n: usize) -> Vec<f32> {
                 return 0.0;
             }
             let db = 20.0 * r.log10();
-            ((db + 60.0) / 50.0).clamp(0.0, 1.0)
+            ((db + 55.0) / 45.0).clamp(0.0, 1.0).powf(0.7)
         })
         .collect()
 }
@@ -273,19 +274,34 @@ mod tests {
 
     #[test]
     fn level_bars_maps_db_range() {
-        let loud = vec![0.5f32; 1200]; // ~ -6 dBFS -> clamps to 1
-        assert!(level_bars(&loud, 12)
-            .iter()
-            .all(|&b| (b - 1.0).abs() < 1e-6));
-        let quiet = vec![0.0001f32; 1200]; // -80 dBFS -> 0
-        assert!(level_bars(&quiet, 12).iter().all(|&b| b == 0.0));
-        let mid = vec![0.01f32; 1200]; // -40 dBFS -> 0.4
-        let b = level_bars(&mid, 12);
-        assert_eq!(b.len(), 12);
-        assert!((b[3] - 0.4).abs() < 0.01);
-        assert_eq!(level_bars(&[], 12), vec![0.0; 12]);
+        let loud = vec![0.5f32; 1200]; // ~ -6 dBFS -> above the -10 dB ceiling -> 1
+        assert!(level_bars(&loud, 9).iter().all(|&b| (b - 1.0).abs() < 1e-6));
+        let quiet = vec![0.0001f32; 1200]; // -80 dBFS -> below the -55 dB floor -> 0
+        assert!(level_bars(&quiet, 9).iter().all(|&b| b == 0.0));
+        // -40 dBFS: (-40 + 55) / 45 = 1/3, then pow 0.7.
+        let mid = vec![0.01f32; 1200];
+        let b = level_bars(&mid, 9);
+        assert_eq!(b.len(), 9);
+        let want = (15.0f32 / 45.0).powf(0.7);
+        assert!((b[3] - want).abs() < 1e-3, "{} vs {want}", b[3]);
+        assert_eq!(level_bars(&[], 9), vec![0.0; 9]);
     }
 
+    #[test]
+    fn level_bars_floor_and_ceiling_are_exact() {
+        // -55 dBFS = 10^(-55/20); -10 dBFS = 10^(-10/20).
+        let at_floor = vec![10f32.powf(-55.0 / 20.0); 900];
+        assert!(level_bars(&at_floor, 9).iter().all(|&b| b < 1e-3));
+        let at_ceiling = vec![10f32.powf(-10.0 / 20.0); 900];
+        assert!(level_bars(&at_ceiling, 9).iter().all(|&b| b > 0.999));
+    }
+
+    #[test]
+    fn level_bars_compress_mid_levels_upwards() {
+        // pow 0.7 lifts quiet speech: half-range input maps above 0.5.
+        let half_db = vec![10f32.powf(-32.5 / 20.0); 900]; // midpoint of -55..-10
+        assert!(level_bars(&half_db, 9)[0] > 0.55);
+    }
     #[test]
     fn silence_detection() {
         assert!(is_silent(&vec![0.0; 16_000]));
