@@ -1,26 +1,14 @@
 import { useCallback, useEffect, useRef, useState } from "react";
 import { History as HistoryIcon, Search, Trash2 } from "lucide-react";
 import { ipc } from "../lib/ipc";
-import { relativeDay } from "../lib/format";
 import { toast } from "../lib/store";
 import { useBackendEvent } from "../lib/useBackendEvent";
 import type { HistoryItem } from "../lib/types";
 import { Button, EmptyState, Input, PageHeader, SkeletonRows } from "../components/ui";
-import { HistoryRow } from "./parts/history/HistoryRow";
+import { DayList } from "./parts/history/DayList";
 import { createLatestGuard } from "./parts/history/latest";
 
 const PAGE = 50;
-
-function groupByDay(items: HistoryItem[]): { day: string; items: HistoryItem[] }[] {
-  const groups: { day: string; items: HistoryItem[] }[] = [];
-  for (const it of items) {
-    const day = relativeDay(it.createdAt);
-    const last = groups[groups.length - 1];
-    if (last && last.day === day) last.items.push(it);
-    else groups.push({ day, items: [it] });
-  }
-  return groups;
-}
 
 export default function History() {
   const [query, setQuery] = useState("");
@@ -85,7 +73,7 @@ export default function History() {
   const hasAny = (items?.length ?? 0) > 0;
   const actions = confirmClear ? (
     <>
-      <span className="text-[13px] text-muted">Delete all history?</span>
+      <span className="text-body text-muted">Delete all history?</span>
       <Button variant="danger" onClick={clearAll}>
         Delete all
       </Button>
@@ -94,7 +82,7 @@ export default function History() {
       </Button>
     </>
   ) : (
-    <Button variant="ghost" icon={<Trash2 size={14} />} disabled={!hasAny} onClick={() => setConfirmClear(true)}>
+    <Button variant="ghost" icon={<Trash2 size={16} strokeWidth={1.5} />} disabled={!hasAny} onClick={() => setConfirmClear(true)}>
       Clear all
     </Button>
   );
@@ -102,40 +90,29 @@ export default function History() {
   return (
     <>
       <PageHeader title="History" description="Everything you have dictated, searchable." actions={actions} />
-      <div className="relative mb-4">
-        <Search size={15} className="pointer-events-none absolute left-3 top-1/2 -translate-y-1/2 text-faint" aria-hidden />
-        <Input
-          type="text"
-          value={query}
-          onChange={(e) => setQuery(e.target.value)}
-          placeholder="Search text or app"
-          aria-label="Search history"
-          className="pl-9"
-        />
-      </div>
+      <Input
+        type="text"
+        icon={<Search size={16} strokeWidth={1.5} aria-hidden />}
+        value={query}
+        onChange={(e) => setQuery(e.target.value)}
+        placeholder="Search text or app"
+        aria-label="Search history"
+        className="mb-6"
+      />
 
       {error && !items ? (
-        <EmptyState icon={<HistoryIcon size={18} />} title="Couldn't load history" description={error} action={<Button onClick={() => load(true)}>Try again</Button>} />
+        <EmptyState icon={<HistoryIcon size={20} strokeWidth={1.5} />} title="Couldn't load history" description={error} action={<Button onClick={() => load(true)}>Try again</Button>} />
       ) : items === null ? (
         <SkeletonRows rows={6} />
       ) : items.length === 0 ? (
         debounced ? (
-          <EmptyState icon={<Search size={18} />} title="No matches" description={`Nothing in your history matches "${debounced}".`} />
+          <EmptyState icon={<Search size={20} strokeWidth={1.5} />} title="No matches" description={`Nothing in your history matches “${debounced}”.`} />
         ) : (
-          <EmptyState icon={<HistoryIcon size={18} />} title="No dictations yet" description="Hold your dictate shortcut in any app. What you say will show up here, so you can copy or re-insert it later." />
+          <EmptyState icon={<HistoryIcon size={20} strokeWidth={1.5} />} title="No dictations yet" description="Hold your dictate shortcut in any app. What you say will show up here, so you can copy or re-insert it later." />
         )
       ) : (
-        <div className="flex flex-col gap-5 pb-10">
-          {groupByDay(items).map((g) => (
-            <section key={g.day} aria-label={g.day}>
-              <h2 className="px-3 pb-1 text-[12px] font-medium text-faint">{g.day}</h2>
-              <ul className="flex flex-col">
-                {g.items.map((it) => (
-                  <HistoryRow key={it.id} item={it} onChanged={() => load()} />
-                ))}
-              </ul>
-            </section>
-          ))}
+        <div className="flex flex-col gap-6 pb-10">
+          <DayList items={items} onChanged={() => load()} />
           {more && (
             <div className="flex justify-center">
               <Button loading={loadingMore} onClick={loadMore}>

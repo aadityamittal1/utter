@@ -10,4 +10,4 @@ export { EmptyState, SkeletonRows } from "./EmptyState";
 export { PageHeader } from "./PageHeader";
 export { Modal } from "./Modal";
 // Thin re-exports: pages import every HeroUI primitive from one place.
-export { Chip, Dropdown, ProgressBar, Slider, Spinner, Tabs, Tooltip } from "@heroui/react";
+export { Chip, Dropdown, Label, ProgressBar, Radio, RadioGroup, Slider, Spinner, Tabs, Tooltip } from "@heroui/react";

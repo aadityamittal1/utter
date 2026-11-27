@@ -36,20 +36,32 @@ function FieldShell({ id, label, helper, error, children, className }: FieldShel
 
 type Shared = { label?: string; helper?: ReactNode; error?: string | null };
 
-export function Input({ label, helper, error, className, id, ref, ...rest }: Shared & InputHTMLAttributes<HTMLInputElement> & { ref?: Ref<HTMLInputElement> }) {
+export function Input({
+  label,
+  helper,
+  error,
+  className,
+  id,
+  ref,
+  icon,
+  ...rest
+}: Shared & InputHTMLAttributes<HTMLInputElement> & { ref?: Ref<HTMLInputElement>; /** Leading icon drawn inside the field. */ icon?: ReactNode }) {
   const auto = useId();
   const fid = id ?? auto;
   return (
     <FieldShell id={fid} label={label} helper={helper} error={error} className={className}>
-      <HeroInput
-        ref={ref}
-        id={fid}
-        fullWidth
-        aria-invalid={!!error}
-        aria-describedby={error ? `${fid}-err` : helper ? `${fid}-help` : undefined}
-        className={cn("h-10 rounded-control px-3 text-body", error && "border-danger")}
-        {...rest}
-      />
+      <div className="relative">
+        {icon && <span className="pointer-events-none absolute left-3 top-1/2 z-10 -translate-y-1/2 text-faint">{icon}</span>}
+        <HeroInput
+          ref={ref}
+          id={fid}
+          fullWidth
+          aria-invalid={!!error}
+          aria-describedby={error ? `${fid}-err` : helper ? `${fid}-help` : undefined}
+          className={cn("h-10 rounded-control px-3 text-body", !!icon && "pl-9", error && "border-danger")}
+          {...rest}
+        />
+      </div>
     </FieldShell>
   );
 }

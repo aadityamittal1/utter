@@ -26,8 +26,26 @@ function keyName(k: string): string {
  * such as "Ctrl+Win+Space". Inside the app the backend captures keys globally
  * (so the Win key works); in a browser it falls back to window key events.
  */
-export function ShortcutRecorder({ value, onChange, label }: { value: string | undefined; onChange: (chord: string) => void; label: string }) {
+export function ShortcutRecorder({
+  value,
+  onChange,
+  label,
+  onRecordingChange,
+}: {
+  value: string | undefined;
+  onChange: (chord: string) => void;
+  label: string;
+  /** Fires when recording starts or ends (lets a parent dialog ignore Esc meanwhile). */
+  onRecordingChange?: (recording: boolean) => void;
+}) {
   const [recording, setRecording] = useState(false);
+  const recordingCb = useRef(onRecordingChange);
+  useEffect(() => {
+    recordingCb.current = onRecordingChange;
+  });
+  useEffect(() => {
+    recordingCb.current?.(recording);
+  }, [recording]);
   const onChangeRef = useRef(onChange);
   useEffect(() => {
     onChangeRef.current = onChange;
@@ -101,7 +119,11 @@ export function ShortcutRecorder({ value, onChange, label }: { value: string | u
     <button
       type="button"
       aria-label={`${label} shortcut. Press to change.`}
-      onClick={() => setRecording((r) => !r)}
+      onClick={() => {
+        // Tell the parent right away (not from an effect), so an Esc pressed immediately after cannot slip through.
+        recordingCb.current?.(!recording);
+        setRecording(!recording);
+      }}
       onBlur={() => setRecording(false)}
       className={cn(
         "inline-flex h-10 min-w-[150px] items-center justify-between gap-3 rounded-control border bg-surface px-3 transition-colors duration-[167ms] ease-fluent",

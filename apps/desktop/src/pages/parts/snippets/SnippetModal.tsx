@@ -1,9 +1,8 @@
 import { useState } from "react";
-import { Button, Input, Textarea } from "../../../components/ui";
+import { Button, Input, Modal, Textarea } from "../../../components/ui";
 import { ipc } from "../../../lib/ipc";
 import type { Snippet } from "../../../lib/types";
 import { errText } from "../dictionary/useLoader";
-import { Modal } from "./Modal";
 import { EXPANSION_MAX, TRIGGER_MAX, validateSnippet } from "./presets";
 
 export interface SnippetDraft {
@@ -13,6 +12,7 @@ export interface SnippetDraft {
   placeholder?: string;
 }
 
+const FORM_ID = "snippet-form";
 
 export function SnippetModal({ draft, onClose, onSaved }: { draft: SnippetDraft; onClose: () => void; onSaved: () => void | Promise<void> }) {
   const [trigger, setTrigger] = useState(draft.trigger);
@@ -36,8 +36,21 @@ export function SnippetModal({ draft, onClose, onSaved }: { draft: SnippetDraft;
 
   const count = expansion.length;
   return (
-    <Modal title={draft.id ? "Edit snippet" : "New snippet"} onClose={onClose}>
+    <Modal
+      isOpen
+      onClose={onClose}
+      title={draft.id ? "Edit snippet" : "New snippet"}
+      footer={
+        <>
+          <Button onClick={onClose}>Cancel</Button>
+          <Button type="submit" form={FORM_ID} variant="primary" loading={busy}>
+            {draft.id ? "Save changes" : "Add snippet"}
+          </Button>
+        </>
+      }
+    >
       <form
+        id={FORM_ID}
         className="flex flex-col gap-4"
         onSubmit={(e) => {
           e.preventDefault();
@@ -68,16 +81,10 @@ export function SnippetModal({ draft, onClose, onSaved }: { draft: SnippetDraft;
           helper={<span className={count > EXPANSION_MAX ? "text-danger" : undefined}>{`${count.toLocaleString("en-US")} / ${EXPANSION_MAX.toLocaleString("en-US")}`}</span>}
         />
         {error && (
-          <p role="alert" className="text-[13px] text-danger">
+          <p role="alert" className="text-body text-danger">
             {error}
           </p>
         )}
-        <div className="flex justify-end gap-2">
-          <Button onClick={onClose}>Cancel</Button>
-          <Button type="submit" variant="primary" loading={busy}>
-            {draft.id ? "Save changes" : "Add snippet"}
-          </Button>
-        </div>
       </form>
     </Modal>
   );

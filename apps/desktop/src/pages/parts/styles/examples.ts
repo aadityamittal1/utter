@@ -85,3 +85,54 @@ export function renderExample(style: StyleKind, category: Category): string {
       return `Hey${to(" ")}, can you ${task}? Thanks so much!!`;
   }
 }
+
+/** One-line description of how each style writes (the card sub-line). */
+export const STYLE_TRAITS: Record<StyleKind, string> = {
+  formal: "Capitals and full punctuation",
+  casual: "Capitals and lighter punctuation",
+  veryCasual: "No capitals, lighter punctuation",
+  excited: "Capitals and exclamation marks",
+};
+
+export type ContextTab = "personal" | "work" | "email" | "other";
+
+/** The four tabs, and which app types each one edits. "other" groups the rarely changed ones. */
+export const CONTEXT_TABS: { id: ContextTab; label: string; categories: Category[] }[] = [
+  { id: "personal", label: "Personal messages", categories: ["personalChat"] },
+  { id: "work", label: "Work messages", categories: ["workChat"] },
+  { id: "email", label: "Email", categories: ["email"] },
+  { id: "other", label: "Other", categories: ["other", "aiPrompt", "code", "document"] },
+];
+
+/** Headline for the banner above a category's style cards. */
+export const BANNER_TITLES: Record<Category, string> = {
+  personalChat: "How you sound with friends",
+  workChat: "How you sound at work",
+  email: "How you sound in email",
+  aiPrompt: "How you sound with an AI",
+  code: "How you sound in code tools",
+  document: "How you sound in documents",
+  other: "How you sound everywhere else",
+};
+
+/** Completes "Always enhance in …" for each category. */
+export const ENHANCE_WHERE: Record<Category, string> = {
+  personalChat: "personal messages",
+  workChat: "work messages",
+  email: "email",
+  aiPrompt: "AI prompts",
+  code: "code tools",
+  document: "documents",
+  other: "other apps",
+};
+
+/** Example apps shown as plain text chips. The match itself is by app, window title and your rules. */
+export const CATEGORY_APPS: Record<Category, string[]> = {
+  personalChat: ["WhatsApp", "Messages", "Discord", "Telegram"],
+  workChat: ["Slack", "Teams", "Zoom chat"],
+  email: ["Outlook", "Gmail", "Thunderbird"],
+  aiPrompt: ["Claude", "ChatGPT", "Gemini"],
+  code: ["VS Code", "Terminal", "JetBrains"],
+  document: ["Word", "Notion", "Google Docs"],
+  other: ["Any other app"],
+};
