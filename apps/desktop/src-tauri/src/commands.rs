@@ -484,7 +484,12 @@ pub fn pill_action(st: St, action: String) -> CmdResult<()> {
             });
         }
         // The pill UI shows its menu inside the 340x40 menu rect; keep that rect interactive.
-        "menuOpen" => crate::windows::MENU_OPEN.store(true, std::sync::atomic::Ordering::Relaxed),
+        "menuOpen" => {
+            let kind = st.pill.lock().state;
+            if crate::windows::menu_allowed(kind) {
+                crate::windows::MENU_OPEN.store(true, std::sync::atomic::Ordering::Relaxed);
+            }
+        }
         "menuClose" => crate::windows::MENU_OPEN.store(false, std::sync::atomic::Ordering::Relaxed),
         "openHub" => crate::windows::show_hub(&st.app, None),
         "openSettings" => crate::windows::show_hub(&st.app, Some("settings")),

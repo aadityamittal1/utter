@@ -14,10 +14,11 @@
 
 use crate::app_state::{AppState, PillKind};
 use crate::windows::{
-    capsule_hit, hide_for_quns, hover_transition, monitor_changed, pill_rect, sync_pill,
-    FULLSCREEN_HIDDEN, MENU_OPEN, PILL_LABEL,
+    capsule_hit, hide_for_quns, hover_transition, menu_expired, monitor_changed, pill_rect,
+    sync_pill, FULLSCREEN_HIDDEN, MENU_OPEN, PILL_LABEL,
 };
 use ::windows::Win32::Foundation::{HWND, LPARAM, LRESULT, POINT, RECT, WPARAM};
+use ::windows::Win32::Graphics::Dwm::{DwmGetWindowAttribute, DWMWA_CLOAKED};
 use ::windows::Win32::Graphics::Gdi::{
     GetMonitorInfoW, MonitorFromPoint, HMONITOR, MONITORINFO, MONITOR_DEFAULTTOPRIMARY,
 };
@@ -38,7 +39,7 @@ use ::windows::Win32::UI::WindowsAndMessaging::{
     WS_EX_TOOLWINDOW, WS_EX_TOPMOST, WS_EX_TRANSPARENT,
 };
 use serde_json::json;
-use std::sync::atomic::{AtomicBool, AtomicIsize, AtomicU32, Ordering};
+use std::sync::atomic::{AtomicBool, AtomicU32, Ordering};
 use std::sync::Arc;
 use std::time::{Duration, Instant};
 use tauri::{AppHandle, Emitter, Manager, WebviewWindow};
@@ -56,8 +57,6 @@ const WM_KEEPER_WAKE: u32 = WM_APP + 1;
 /// Styles the pill must always carry.
 const REQUIRED_EX: u32 = WS_EX_TOOLWINDOW.0 | WS_EX_NOACTIVATE.0 | WS_EX_TOPMOST.0;
 
-/// The pill's HWND for the WinEvent callback (which has no context pointer); 0 = none.
-static HOOK_TARGET: AtomicIsize = AtomicIsize::new(0);
 /// Win32 id of the keeper thread, for `stop_keeper`; 0 = not running.
 static KEEPER_TID: AtomicU32 = AtomicU32::new(0);
 /// Set by the subclass when the display, DPI, work area or power state changed; the keeper
@@ -190,7 +189,6 @@ unsafe extern "system" fn subclass_proc(
             DIRTY.store(true, Ordering::Relaxed);
         }
         WM_NCDESTROY => {
-            HOOK_TARGET.store(0, Ordering::Relaxed);
             // SAFETY: removing our own subclass from the window being destroyed.
             let _ = unsafe { RemoveWindowSubclass(hwnd, Some(subclass_proc), id) };
         }
@@ -227,6 +225,28 @@ fn rects_overlap(a: &RECT, b: &RECT) -> bool {
     a.left < b.right && b.left < a.right && a.top < b.bottom && b.top < a.bottom
 }
 
+/// Does this window really sit visibly above the pill? Hidden, DWM-cloaked (virtual-desktop
+/// or suspended UWP ghosts) and click-through overlay windows do not count.
+fn counts_as_cover(hwnd: HWND) -> bool {
+    // SAFETY: plain queries; `cloaked` is a valid 4-byte out-buffer for DWMWA_CLOAKED.
+    unsafe {
+        if !IsWindowVisible(hwnd).as_bool() {
+            return false;
+        }
+        let mut cloaked = 0u32;
+        let _ = DwmGetWindowAttribute(
+            hwnd,
+            DWMWA_CLOAKED,
+            (&mut cloaked as *mut u32).cast(),
+            std::mem::size_of::<u32>() as u32,
+        );
+        if cloaked != 0 {
+            return false;
+        }
+        GetWindowLongPtrW(hwnd, GWL_EXSTYLE) as u32 & WS_EX_TRANSPARENT.0 == 0
+    }
+}
+
 /// Is a visible window above the pill in the z-order overlapping the pill's rect?
 fn is_covered(hwnd: HWND) -> bool {
     let Some(mine) = window_rect(hwnd) else {
@@ -243,10 +263,7 @@ fn is_covered(hwnd: HWND) -> bool {
             return false;
         }
         cur = prev;
-        // SAFETY: plain query.
-        if unsafe { IsWindowVisible(cur) }.as_bool()
-            && window_rect(cur).is_some_and(|r| rects_overlap(&r, &mine))
-        {
+        if counts_as_cover(cur) && window_rect(cur).is_some_and(|r| rects_overlap(&r, &mine)) {
             return true;
         }
     }
@@ -396,6 +413,8 @@ struct Keeper {
     last_reassert: Instant,
     last_follow: Instant,
     last_quns: Instant,
+    /// Since when the cursor has been outside the open menu (for the latch expiry).
+    menu_outside_since: Option<Instant>,
 }
 
 fn keeper(app: AppHandle) {
@@ -403,7 +422,6 @@ fn keeper(app: AppHandle) {
         log::error!("pill keeper: pill window has no handle");
         return;
     };
-    HOOK_TARGET.store(hwnd, Ordering::Relaxed);
     // SAFETY: the hook and timer belong to this thread, which pumps messages below; the
     // callback only touches atomics and posts to this thread. Out-of-context hooks are
     // delivered through that message loop.
@@ -430,6 +448,7 @@ fn keeper(app: AppHandle) {
             last_reassert: now,
             last_follow: now,
             last_quns: now,
+            menu_outside_since: None,
         };
         k.timer = SetTimer(None, 0, k.timer_ms, None);
         let mut msg = MSG::default();
@@ -447,7 +466,6 @@ fn keeper(app: AppHandle) {
         if !hook.is_invalid() {
             let _ = UnhookWinEvent(hook);
         }
-        HOOK_TARGET.store(0, Ordering::Relaxed);
         KEEPER_TID.store(0, Ordering::Relaxed);
     }
 }
@@ -548,6 +566,7 @@ impl Keeper {
             ),
             _ => false,
         };
+        self.expire_menu(inside);
         let (ignore, emit) = hover_transition(self.ignoring, self.hover, inside);
         if let Some(ignore) = ignore {
             self.ignoring = ignore;
@@ -559,6 +578,19 @@ impl Keeper {
         if let Some(h) = emit {
             self.hover = h;
             let _ = self.app.emit("pill://hover", json!({ "hover": h }));
+        }
+    }
+
+    /// Drop the menu latch once the cursor has stayed outside the menu rect for too long.
+    fn expire_menu(&mut self, inside: bool) {
+        if !MENU_OPEN.load(Ordering::Relaxed) || inside {
+            self.menu_outside_since = None;
+            return;
+        }
+        let since = *self.menu_outside_since.get_or_insert_with(Instant::now);
+        if menu_expired(since.elapsed().as_millis() as u64) {
+            MENU_OPEN.store(false, Ordering::Relaxed);
+            self.menu_outside_since = None;
         }
     }
 

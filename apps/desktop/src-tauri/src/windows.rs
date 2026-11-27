@@ -28,6 +28,19 @@ pub static MENU_OPEN: AtomicBool = AtomicBool::new(false);
 /// Logical size of the menu rect the pill UI draws (centred, same bottom margin as the capsule).
 const MENU_W: u32 = 340;
 const MENU_H: u32 = 40;
+/// The menu latch drops once the cursor has been outside the menu rect this long (ms), so a
+/// menu the UI forgot to close can never leave the pill capturing the mouse.
+pub const MENU_IDLE_CLOSE_MS: u64 = 3000;
+
+/// Can the pill show its menu in this state? (Not during the brief thinking/done flashes.)
+pub fn menu_allowed(kind: PillKind) -> bool {
+    !matches!(kind, PillKind::Thinking | PillKind::Done)
+}
+
+/// Has the cursor been away from the open menu long enough to drop the latch?
+pub fn menu_expired(outside_for_ms: u64) -> bool {
+    outside_for_ms > MENU_IDLE_CLOSE_MS
+}
 
 /// Physical-pixel rect `(x, y, w, h)` of the pill window for a work area `(x, y, w, h)` and DPI
 /// scale: horizontally centred, placed so the visible capsule floats 12 logical px above the
@@ -216,8 +229,6 @@ fn pill_shown(w: &WebviewWindow) -> bool {
 /// Apply a pill state to its window. The work runs on the main thread (Tauri window calls and
 /// `SetWindowPos` on our own window belong there); calls are queued in order.
 pub fn sync_pill(app: &AppHandle, st: &PillState, allowed: bool) {
-    // Any state change closes the menu (the UI re-opens it if it wants it).
-    MENU_OPEN.store(false, Ordering::Relaxed);
     let show = pill_visible(allowed, FULLSCREEN_HIDDEN.load(Ordering::Relaxed), st.state);
     let kind = st.state;
     let handle = app.clone();
@@ -394,6 +405,18 @@ mod tests {
             false
         ));
         assert!(capsule_hit(p, (100, 900), 1.0, PillKind::Idle, false, true));
+    }
+
+    #[test]
+    fn menu_latch_rules() {
+        assert!(menu_allowed(PillKind::Idle));
+        assert!(menu_allowed(PillKind::Locked));
+        assert!(menu_allowed(PillKind::Error));
+        assert!(!menu_allowed(PillKind::Thinking));
+        assert!(!menu_allowed(PillKind::Done));
+        assert!(!menu_expired(0));
+        assert!(!menu_expired(3000));
+        assert!(menu_expired(3001));
     }
 
     #[test]
