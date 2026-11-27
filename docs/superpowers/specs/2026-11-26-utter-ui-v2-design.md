@@ -35,8 +35,8 @@ banner imagery, third-party app logos or paid-plan UI (no "Get unlimited access"
   place uppercase is allowed (deliberate reference convention).
 - **Colour.** Warm neutral ramp (unslop "warm"), not graphite: canvas `#f4f2ee`, panel `#fbfbf9`,
   card `#ffffff`, raised `#f1efea`, row hover `#f3f1ec`, hairline `rgb(26 24 20 / 0.08)`, text
-  `#1a1814`, secondary `#5e5a52`, muted `#77726a`. Dark: canvas `#1b1a19`, panel `#232220`, card
-  `#2a2826`, raised `#312f2c`, text `#f4f2ee`, secondary `#c4bfb6`, muted `#9b958b`.
+  `#1a1814`, secondary `#5e5a52`, muted `#6c675f`. Dark: canvas `#1b1a19`, panel `#232220`, card
+  `#2a2826`, raised `#312f2c`, text `#f4f2ee`, secondary `#c4bfb6`, muted `#a39d93`.
   **Primary buttons and "on" switches are ink** (`#1a1814` with white text; dark theme: `#f4f2ee`
   with ink text), radius 10px, 40px tall (32px small). Secondary buttons: raised fill, no border.
   Ember is the brand accent for selection (selected style card border), live states, links and
