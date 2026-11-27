@@ -25,19 +25,28 @@ describe("Sidebar", () => {
   it.each<[Page, string]>([
     ["home", "Home"],
     ["history", "History"],
-    ["settings", "Settings"],
   ])("marks only %s as current", (page, label) => {
     act(() => useNav.setState({ page }));
     act(() => root.render(<Sidebar />));
     expect(current()).toEqual([label]);
   });
 
-  it("follows navigation clicks, with Settings inside the nav landmark", () => {
-    act(() => useNav.setState({ page: "home" }));
+  it("opens the settings dialog from the nav, and marks Settings current while it is open", () => {
+    act(() => useNav.setState({ page: "home", settingsOpen: false }));
     act(() => root.render(<Sidebar />));
     const settings = [...host.querySelectorAll("nav button")].find((b) => b.textContent?.trim() === "Settings") as HTMLButtonElement;
     expect(settings).toBeTruthy();
     act(() => settings.click());
-    expect(current()).toEqual(["Settings"]);
+    expect(useNav.getState().settingsOpen).toBe(true);
+    expect(current()).toContain("Settings");
+    act(() => useNav.getState().closeSettings());
+  });
+
+  it("follows navigation clicks", () => {
+    act(() => useNav.setState({ page: "home" }));
+    act(() => root.render(<Sidebar />));
+    const history = [...host.querySelectorAll("nav button")].find((b) => b.textContent?.trim() === "History") as HTMLButtonElement;
+    act(() => history.click());
+    expect(current()).toEqual(["History"]);
   });
 });

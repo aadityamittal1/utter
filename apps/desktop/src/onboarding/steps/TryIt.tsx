@@ -88,16 +88,16 @@ export function TryIt({ next, back }: StepProps) {
         {latest ? (
           <div className="grid divide-y divide-line sm:grid-cols-2 sm:divide-x sm:divide-y-0">
             <div className="p-4">
-              <p className="text-[11px] font-semibold uppercase tracking-wider text-faint">Before</p>
-              <p className="mt-1.5 text-[13px] leading-relaxed text-muted">{latest.rawText}</p>
+              <p className="text-caption font-medium text-faint">Before</p>
+              <p className="mt-1.5 text-body text-muted">{latest.rawText}</p>
             </div>
             <div className="p-4">
-              <p className="text-[11px] font-semibold uppercase tracking-wider text-ember-text">After</p>
-              <p className="mt-1.5 text-[13px] leading-relaxed text-ink">{latest.finalText}</p>
+              <p className="text-caption font-medium text-ember-text">After</p>
+              <p className="mt-1.5 text-body text-ink">{latest.finalText}</p>
             </div>
           </div>
         ) : (
-          <p className="px-4 py-3.5 text-[13px] text-muted">
+          <p className="px-4 py-3.5 text-body text-muted">
             {baseline === undefined
               ? "Loading…"
               : noHistory
@@ -107,9 +107,9 @@ export function TryIt({ next, back }: StepProps) {
         )}
       </div>
 
-      <div className="mt-4 flex items-start gap-3 rounded-card bg-highlight-soft px-4 py-3.5">
-        <Sparkles size={16} className="mt-0.5 shrink-0 text-highlight" aria-hidden />
-        <div className="text-[13px] leading-relaxed text-ink">
+      <div className="mt-4 flex items-start gap-3 rounded-card bg-ember-soft px-4 py-3.5">
+        <Sparkles size={16} strokeWidth={1.5} className="mt-0.5 shrink-0 text-ember-text" aria-hidden />
+        <div className="text-body text-ink">
           <p className="font-medium">Want it polished further?</p>
           <p className="mt-0.5 text-muted">
             Hold <Chord chord={enhance} className="mx-0.5 align-middle" /> instead of <Chord chord={dictate} className="mx-0.5 align-middle" /> to dictate and enhance: Claude tightens the wording and structures it for where you are.
@@ -118,7 +118,7 @@ export function TryIt({ next, back }: StepProps) {
       </div>
 
       {!isTauri() && (
-        <Button variant="ghost" size="sm" className="mt-3" onClick={simulate} icon={<ArrowRight size={13} aria-hidden />}>
+        <Button variant="ghost" size="sm" className="mt-3" onClick={simulate} icon={<ArrowRight size={16} strokeWidth={1.5} aria-hidden />}>
           Simulate a dictation (preview only)
         </Button>
       )}

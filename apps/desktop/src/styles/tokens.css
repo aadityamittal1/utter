@@ -157,6 +157,23 @@
   --overlay-shadow: 0 8px 16px rgb(0 0 0 / 0.4), 0 0 0 1px rgb(244 242 238 / 0.1);
 }
 
+@theme {
+  --font-sans: "Segoe UI Variable Text", "Segoe UI Variable", "Segoe UI", system-ui, sans-serif;
+  --font-display: "Segoe UI Variable Display", "Segoe UI Variable", "Segoe UI", system-ui, sans-serif;
+  /* Bundled brand serif: banner headlines, section headings, big figures. */
+  --font-serif: "Instrument Serif", Georgia, serif;
+  --font-mono: "Cascadia Mono", "Cascadia Code", Consolas, ui-monospace, monospace;
+
+  --ease-fluent: cubic-bezier(0, 0, 0, 1);
+  --ease-fluent-exit: cubic-bezier(1, 0, 1, 1);
+
+  /* Own radius names; Tailwind rounded-sm/md/lg/xl keep their stock values. */
+  --radius-control: 10px;
+  --radius-card: 16px;
+  --radius-panel: 16px;
+  --radius-shell: 20px;
+}
+
 /* Tailwind utilities: bg-surface, text-muted, border-line, rounded-card, ... */
 @theme inline {
   --color-bg: var(--bg);
@@ -285,6 +302,13 @@
 .button--ghost {
   --button-bg-hover: var(--hover);
   --button-bg-pressed: var(--active);
+}
+
+/* Raised buttons sit on raised cards: one step darker, with real hover and pressed states. */
+.button--secondary.button--raised {
+  --button-bg: var(--surface-tertiary);
+  --button-bg-hover: color-mix(in oklab, var(--surface-tertiary), var(--text) 8%);
+  --button-bg-pressed: color-mix(in oklab, var(--surface-tertiary), var(--text) 14%);
 }
 
 /* Overlays: explicit radii, and a real border so forced-colors keeps the edge. */

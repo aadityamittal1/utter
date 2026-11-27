@@ -50,7 +50,7 @@ fn setup(app: &mut tauri::App) -> Result<(), Box<dyn std::error::Error>> {
     windows::create_pill(&handle)?;
     tray::create(&handle)?;
     let pill_now = st.pill.lock().clone();
-    windows::sync_pill(&handle, &pill_now, st.pill_allowed());
+    windows::sync_pill(&handle, &pill_now, st.pill_allowed(pill_now.state));
     #[cfg(target_os = "windows")]
     pill_windows::start_keeper(handle.clone());
 

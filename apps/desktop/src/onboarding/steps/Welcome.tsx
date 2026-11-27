@@ -13,23 +13,23 @@ export function Welcome({ next }: StepProps) {
   return (
     <div className="flex flex-col items-start">
       <LogoMark width={64} />
-      <h1 className="mt-8 font-display text-[56px] leading-[1.04] text-ink outline-none focus:outline-none">
+      <h1 className="mt-8 text-title-lg text-ink outline-none focus:outline-none">
         Speak anywhere.
         <br />
         <span className="text-ember-text">Utter</span> writes it.
       </h1>
-      <p className="mt-4 max-w-[46ch] text-base leading-relaxed text-muted">
+      <p className="mt-4 max-w-[46ch] text-body-lg text-muted">
         Dictation that sounds like you, not like a transcript. Setup takes about two minutes.
       </p>
       <ul className="mt-9 flex w-full flex-col gap-4">
         {PROMISES.map(({ icon: Icon, title, body }) => (
           <li key={title} className="flex items-start gap-3.5">
             <span className="mt-0.5 flex size-8 shrink-0 items-center justify-center rounded-control bg-ember-soft text-ember-text">
-              <Icon size={16} aria-hidden />
+              <Icon size={16} strokeWidth={1.5} aria-hidden />
             </span>
             <div>
-              <p className="text-sm font-semibold text-ink">{title}</p>
-              <p className="text-[13px] leading-relaxed text-muted">{body}</p>
+              <p className="text-body-strong text-ink">{title}</p>
+              <p className="text-body text-muted">{body}</p>
             </div>
           </li>
         ))}

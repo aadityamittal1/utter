@@ -1,12 +1,12 @@
 import { useEffect, useState } from "react";
 import { CheckCircle2, ExternalLink, KeyRound, Trash2, XCircle } from "lucide-react";
-import { Button, Input } from "../../components/ui";
+import { Button, Input, Select } from "../../components/ui";
 import { ipc } from "../../lib/ipc";
 import { formatNumber, formatUsd } from "../../lib/format";
 import { toast } from "../../lib/store";
 import type { ApiKeyStatus, Usage } from "../../lib/types";
 import { openExternal } from "./helpers";
-import { Section, WithSettings } from "./parts";
+import { Block, Group, RaisedButton, Row, SettingsPage, WithSettings } from "./parts";
 
 const KEYS_URL = "https://console.anthropic.com/settings/keys";
 
@@ -95,119 +95,113 @@ export default function AI() {
   };
 
   return (
-    <WithSettings>
-      {(s, update) => (
-        <div className="flex flex-col gap-4">
-          <Section title="Claude API key" description="Optional. Powers cleanup, enhance, command and transforms. Only text is sent, never audio. Without a key Utter cleans text locally.">
-            <div className="flex flex-col gap-4 py-4">
-              {status?.set && (
-                <div className="flex items-center justify-between gap-4 rounded-control border border-line bg-surface px-3.5 py-2.5">
-                  <span className="flex items-center gap-2.5 text-sm text-ink">
-                    <KeyRound size={16} aria-hidden className="text-muted" />
-                    <span className="font-mono text-[13px]" aria-label={`Key ending in ${status.last4 ?? ""}`}>
-                      {"•".repeat(12)}
-                      {status.last4}
-                    </span>
-                  </span>
-                  <span className="flex items-center gap-1">
-                    <Button size="sm" variant="ghost" loading={testing} onClick={() => void test()}>
+    <SettingsPage title="AI">
+      <WithSettings>
+        {(s, update) => {
+          const chosen = MODELS.find((m) => m.id === s.aiModel);
+          return (
+            <>
+              <Group title="Claude API key" description="Optional. Powers cleanup, enhance, command and transforms. Only text is sent, never audio. Without a key Utter cleans text locally.">
+                {status?.set && (
+                  <Row
+                    title="Saved key"
+                    description={
+                      <span className="inline-flex items-center gap-2 font-mono" aria-label={`Key ending in ${status.last4 ?? ""}`}>
+                        <KeyRound size={16} strokeWidth={1.5} aria-hidden />
+                        {"•".repeat(12)}
+                        {status.last4}
+                      </span>
+                    }
+                  >
+                    <RaisedButton loading={testing} onClick={() => void test()}>
                       Test
-                    </Button>
-                    <Button size="sm" variant="danger" icon={<Trash2 size={14} />} onClick={() => void remove()}>
+                    </RaisedButton>
+                    <RaisedButton variant="danger" icon={<Trash2 size={16} strokeWidth={1.5} />} onClick={() => void remove()}>
                       Remove
+                    </RaisedButton>
+                  </Row>
+                )}
+                <Block>
+                  <form
+                    className="flex items-end gap-2"
+                    onSubmit={(e) => {
+                      e.preventDefault();
+                      void save();
+                    }}
+                  >
+                    <Input
+                      label={status?.set ? "Replace key" : "API key"}
+                      type="password"
+                      autoComplete="off"
+                      spellCheck={false}
+                      placeholder="sk-ant-…"
+                      value={draft}
+                      onChange={(e) => setDraft(e.target.value)}
+                      className="flex-1"
+                    />
+                    <Button type="submit" variant="primary" loading={saving} disabled={!draft.trim()}>
+                      Save and test
                     </Button>
-                  </span>
-                </div>
-              )}
-              <form
-                className="flex items-end gap-2"
-                onSubmit={(e) => {
-                  e.preventDefault();
-                  void save();
-                }}
-              >
-                <Input
-                  label={status?.set ? "Replace key" : "API key"}
-                  type="password"
-                  autoComplete="off"
-                  spellCheck={false}
-                  placeholder="sk-ant-..."
-                  value={draft}
-                  onChange={(e) => setDraft(e.target.value)}
-                  className="flex-1"
-                />
-                <Button type="submit" variant="primary" loading={saving} disabled={!draft.trim()}>
-                  Save and test
-                </Button>
-              </form>
-              <div aria-live="polite" className="min-h-5">
-                {result?.ok && (
-                  <p className="flex items-center gap-1.5 text-sm text-success">
-                    <CheckCircle2 size={16} aria-hidden /> Key works. Claude is ready.
-                  </p>
-                )}
-                {result && !result.ok && (
-                  <p role="alert" className="flex items-start gap-1.5 text-sm text-danger">
-                    <XCircle size={16} aria-hidden className="mt-0.5 shrink-0" /> {result.message}
-                  </p>
-                )}
-              </div>
-              <div>
-                <Button size="sm" variant="ghost" icon={<ExternalLink size={14} />} onClick={() => void openExternal(KEYS_URL)}>
-                  Get a key
-                </Button>
-              </div>
-              <p className="text-xs text-faint">Your key is stored in Windows Credential Manager. It is never written to settings or logs.</p>
-            </div>
-          </Section>
+                  </form>
+                  <div aria-live="polite" className="mt-3 min-h-6">
+                    {result?.ok && (
+                      <p className="flex items-center gap-2 text-body text-success">
+                        <CheckCircle2 size={16} strokeWidth={1.5} aria-hidden /> Key works. Claude is ready.
+                      </p>
+                    )}
+                    {result && !result.ok && (
+                      <p role="alert" className="flex items-start gap-2 text-body text-danger">
+                        <XCircle size={16} strokeWidth={1.5} aria-hidden className="mt-0.5 shrink-0" /> {result.message}
+                      </p>
+                    )}
+                  </div>
+                  <div className="mt-1 flex flex-wrap items-center justify-between gap-3">
+                    <p className="text-caption text-faint">Your key is stored in Windows Credential Manager. It is never written to settings or logs.</p>
+                    <RaisedButton icon={<ExternalLink size={16} strokeWidth={1.5} />} onClick={() => void openExternal(KEYS_URL)}>
+                      Get a key
+                    </RaisedButton>
+                  </div>
+                </Block>
+              </Group>
 
-          <Section title="Model">
-            <fieldset className="py-4">
-              <legend className="sr-only">Claude model</legend>
-              <div className="grid gap-3 sm:grid-cols-2">
-                {MODELS.map((m) => {
-                  const on = s.aiModel === m.id;
-                  return (
-                    <label
-                      key={m.id}
-                      className={`flex cursor-pointer flex-col gap-1 rounded-card border px-4 py-3 transition-colors has-[:focus-visible]:outline-2 has-[:focus-visible]:outline-[var(--ring)] ${on ? "border-ember bg-ember-soft" : "border-line bg-surface hover:border-line-strong"}`}
-                    >
-                      <input type="radio" name="ai-model" className="sr-only" checked={on} onChange={() => void update({ aiModel: m.id })} />
-                      <span className="text-sm font-semibold text-ink">{m.name}</span>
-                      <span className="text-[13px] text-muted">{m.note}</span>
-                      <span className="mt-1 font-mono text-xs text-faint">{m.price}</span>
-                    </label>
-                  );
-                })}
-              </div>
-            </fieldset>
-          </Section>
+              <Group title="Model">
+                <Row title="Claude model" description={chosen ? `${chosen.note} ${chosen.price}.` : undefined}>
+                  <Select aria-label="Claude model" value={s.aiModel} onChange={(e) => void update({ aiModel: e.target.value })} className="w-44">
+                    {MODELS.map((m) => (
+                      <option key={m.id} value={m.id}>
+                        {m.name}
+                      </option>
+                    ))}
+                  </Select>
+                </Row>
+              </Group>
 
-          <Section title="Usage this month">
-            <div className="py-4">
-              {usage ? (
-                <dl className="grid grid-cols-3 gap-4">
-                  <Stat label="Input tokens" value={formatNumber(usage.monthInputTokens)} />
-                  <Stat label="Output tokens" value={formatNumber(usage.monthOutputTokens)} />
-                  <Stat label="Estimated cost" value={formatUsd(usage.estCostUsd)} />
-                </dl>
-              ) : (
-                <p className="text-sm text-muted">Usage isn't available right now.</p>
-              )}
-              <p className="mt-3 text-xs text-faint">Estimate based on list prices. Your Anthropic console has the exact bill.</p>
-            </div>
-          </Section>
-        </div>
-      )}
-    </WithSettings>
+              <Group title="Usage this month" description="Estimated from list prices. Your Anthropic console has the exact bill.">
+                <Block>
+                  {usage ? (
+                    <dl className="grid grid-cols-3 gap-4">
+                      <Stat label="Input tokens" value={formatNumber(usage.monthInputTokens)} />
+                      <Stat label="Output tokens" value={formatNumber(usage.monthOutputTokens)} />
+                      <Stat label="Estimated cost" value={formatUsd(usage.estCostUsd)} />
+                    </dl>
+                  ) : (
+                    <p className="text-body text-muted">Usage isn't available right now.</p>
+                  )}
+                </Block>
+              </Group>
+            </>
+          );
+        }}
+      </WithSettings>
+    </SettingsPage>
   );
 }
 
 function Stat({ label, value }: { label: string; value: string }) {
   return (
     <div>
-      <dt className="text-xs text-muted">{label}</dt>
-      <dd className="mt-0.5 font-display text-[28px] leading-none text-ink tabular-nums">{value}</dd>
+      <dt className="text-caption text-muted">{label}</dt>
+      <dd className="mt-1 text-serif-figure text-ink">{value}</dd>
     </div>
   );
 }

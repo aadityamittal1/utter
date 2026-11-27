@@ -59,9 +59,9 @@ export default function Notes() {
     <div>
       <PageHeader
         title="Notes"
-        description="A scratchpad that lives next to your dictation. Talk a thought out, tidy it later."
+        description="A scratchpad next to your dictation. Talk a thought out, tidy it later."
         actions={
-          <Button variant="primary" size="sm" icon={<Plus size={15} />} onClick={() => void create()}>
+          <Button variant="primary" icon={<Plus size={16} strokeWidth={1.5} />} onClick={() => void create()}>
             New note
           </Button>
         }
@@ -73,51 +73,51 @@ export default function Notes() {
         <SkeletonRows rows={4} />
       ) : notes.length === 0 ? (
         <EmptyState
-          icon={<StickyNote size={18} />}
+          icon={<StickyNote size={20} strokeWidth={1.5} />}
           title="No notes yet"
           description="Start a note and dictate straight into it."
           action={
-            <Button variant="primary" icon={<Plus size={15} />} onClick={() => void create()}>
+            <Button variant="primary" icon={<Plus size={16} strokeWidth={1.5} />} onClick={() => void create()}>
               New note
             </Button>
           }
         />
       ) : (
-        <div className="grid h-[min(620px,calc(100dvh-220px))] min-h-[420px] grid-cols-[260px_1fr] overflow-hidden rounded-card border border-line bg-surface">
-          <div className="flex min-h-0 flex-col border-r border-line">
-            <div className="relative border-b border-line p-2.5">
-              <Search size={14} aria-hidden className="pointer-events-none absolute left-5 top-1/2 -translate-y-1/2 text-faint" />
+        <div className="grid h-[min(640px,calc(100dvh-220px))] min-h-[420px] grid-cols-[272px_1fr] gap-4">
+          <div className="flex min-h-0 flex-col">
+            <div className="relative pb-3">
+              <Search size={16} strokeWidth={1.5} aria-hidden className="pointer-events-none absolute left-3 top-[calc(50%-6px)] -translate-y-1/2 text-faint" />
               <input
                 aria-label="Search notes"
                 placeholder="Search notes"
                 value={query}
                 onChange={(e) => setQuery(e.target.value)}
-                className="h-8 w-full rounded-control border border-line bg-bg pl-8 pr-3 text-[13px] placeholder:text-faint hover:border-line-strong focus-visible:outline-2 focus-visible:outline-offset-0"
+                className="h-10 w-full rounded-control border border-line bg-surface pl-9 pr-3 text-body placeholder:text-faint transition-colors duration-[167ms] ease-fluent hover:border-line-strong"
               />
             </div>
-            <ul className="min-h-0 flex-1 overflow-y-auto p-1.5" aria-label="Notes">
-              {shown.length === 0 && <li className="px-3 py-6 text-center text-[13px] text-muted">No notes match.</li>}
+            <ul className="min-h-0 flex-1 overflow-y-auto overscroll-contain p-1" aria-label="Notes">
+              {shown.length === 0 && <li className="px-3 py-6 text-center text-body text-muted">No notes match.</li>}
               {shown.map((n) => (
                 <li key={n.id}>
                   <button
                     type="button"
                     onClick={() => setSelected(n.id)}
                     aria-current={n.id === current?.id ? "true" : undefined}
-                    className={cn("flex w-full flex-col rounded-control px-3 py-2 text-left transition-colors", n.id === current?.id ? "bg-muted-surface" : "hover:bg-hover")}
+                    className={cn("flex w-full flex-col rounded-control px-3 py-2.5 text-left transition-colors duration-[167ms] ease-fluent", n.id === current?.id ? "bg-nav-active" : "hover:bg-row-hover")}
                   >
-                    <span className="truncate text-sm font-medium text-ink">{n.title.trim() || "Untitled note"}</span>
-                    <span className="truncate text-xs text-muted">{previewLine(n.body) || "Empty"}</span>
-                    <span className="mt-0.5 text-[11px] text-faint">{relativeDay(n.updatedAt)}</span>
+                    <span className="truncate text-body-strong text-ink">{n.title.trim() || "Untitled note"}</span>
+                    <span className="truncate text-caption text-muted">{previewLine(n.body) || "Empty"}</span>
+                    <span className="mt-0.5 text-caption text-faint">{relativeDay(n.updatedAt)}</span>
                   </button>
                 </li>
               ))}
             </ul>
           </div>
-          <div className="min-h-0 min-w-0">
+          <div className="min-h-0 min-w-0 overflow-hidden rounded-card border border-line bg-surface">
             {current ? (
               <NoteEditor key={current.id} note={current} dictateChord={dictate} autoFocus={fresh === current.id} onSaved={saved} onDelete={() => remove(current.id)} />
             ) : (
-              <div className="flex h-full items-center justify-center text-sm text-muted">Pick a note, or start a new one.</div>
+              <div className="flex h-full items-center justify-center text-body text-muted">Pick a note, or start a new one.</div>
             )}
           </div>
         </div>

@@ -130,6 +130,12 @@ pub fn monitor_changed(prev: Option<isize>, cur: Option<isize>) -> bool {
     cur.is_some() && prev != cur
 }
 
+/// Is the pill allowed in state `kind`? `hidden` (hide for one hour) hides every state; the
+/// show-pill setting only hides the resting pill, so dictation feedback always appears.
+pub fn pill_allowed_by(show_pill: bool, hidden: bool, kind: PillKind) -> bool {
+    !hidden && (show_pill || kind != PillKind::Idle)
+}
+
 /// Should the pill window be visible? Hidden when not allowed; hidden while idle (not
 /// dictating) when a fullscreen app/game/presentation is in front.
 pub fn pill_visible(allowed: bool, fullscreen_hidden: bool, kind: PillKind) -> bool {
@@ -450,6 +456,21 @@ mod tests {
         assert!(!monitor_changed(Some(2), Some(2)));
         assert!(!monitor_changed(Some(2), None), "unknown never counts");
         assert!(!monitor_changed(None, None));
+    }
+
+    #[test]
+    fn show_pill_off_hides_only_the_idle_pill() {
+        use PillKind::*;
+        assert!(pill_allowed_by(true, false, Idle));
+        assert!(!pill_allowed_by(false, false, Idle));
+        for k in [Listening, Locked, Thinking, Done, Error] {
+            assert!(
+                pill_allowed_by(false, false, k),
+                "{k:?} still shows with the setting off"
+            );
+            assert!(!pill_allowed_by(true, true, k), "hide for 1h hides {k:?}");
+        }
+        assert!(!pill_allowed_by(true, true, Idle));
     }
 
     #[test]

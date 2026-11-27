@@ -59,6 +59,7 @@ export function Sidebar() {
   const page = useNav((s) => s.page);
   const navigate = useNav((s) => s.navigate);
   const openSettings = useNav((s) => s.openSettings);
+  const settingsOpen = useNav((s) => s.settingsOpen);
   const collapsed = useNav((s) => s.sidebarCollapsed);
 
   return (
@@ -79,7 +80,7 @@ export function Sidebar() {
           ))}
         </div>
         <div className="mt-3 flex flex-col gap-0.5 border-t border-line pt-3">
-          <NavRow icon={SETTINGS_ITEM.icon} label={SETTINGS_ITEM.label} active={page === "settings"} collapsed={collapsed} onPress={() => openSettings()} />
+          <NavRow icon={SETTINGS_ITEM.icon} label={SETTINGS_ITEM.label} active={settingsOpen} collapsed={collapsed} onPress={() => openSettings()} />
           <NavRow icon={CircleHelp} label="Help" collapsed={collapsed} onPress={() => void openExternal(HELP_URL)} />
         </div>
       </nav>

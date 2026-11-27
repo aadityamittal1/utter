@@ -14,13 +14,13 @@ const WRITTEN: Array<{ id: StyleKind; label: string; hint: string }> = [
 const CHAT: Array<{ id: StyleKind; label: string; hint: string }> = [
   { id: "casual", label: "Casual", hint: "Clean, friendly" },
   { id: "veryCasual", label: "Very casual", hint: "lowercase, light" },
-  { id: "excited", label: "Excited", hint: "Energy and exclamation!" },
+  { id: "excited", label: "Excited", hint: "Energy and exclamation marks" },
 ];
 
 function Choice<T extends string>({ label, options, value, onChange }: { label: string; options: Array<{ id: T; label: string; hint: string }>; value: T | undefined; onChange: (v: T) => void }) {
   return (
     <fieldset>
-      <legend className="mb-1.5 text-[13px] font-medium text-ink">{label}</legend>
+      <legend className="mb-1.5 text-body font-medium text-ink">{label}</legend>
       <div role="radiogroup" className="flex flex-wrap gap-2">
         {options.map((o) => (
           <button
@@ -34,8 +34,8 @@ function Choice<T extends string>({ label, options, value, onChange }: { label: 
               value === o.id ? "border-ember bg-ember-soft" : "border-line bg-surface hover:border-line-strong",
             )}
           >
-            <span className="block text-[13px] font-medium text-ink">{o.label}</span>
-            <span className="block text-[11px] text-muted">{o.hint}</span>
+            <span className="block text-body font-medium text-ink">{o.label}</span>
+            <span className="block text-caption text-muted">{o.hint}</span>
           </button>
         ))}
       </div>

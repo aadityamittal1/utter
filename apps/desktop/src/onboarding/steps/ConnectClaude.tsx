@@ -51,10 +51,10 @@ export function ConnectClaude({ next, back }: StepProps) {
     >
       {!showInput ? (
         <div className="flex items-center gap-3 rounded-card border border-line bg-success-soft px-4 py-3.5" role="status">
-          <CheckCircle2 size={18} className="text-success" aria-hidden />
+          <CheckCircle2 size={16} strokeWidth={1.5} className="text-success" aria-hidden />
           <div className="flex-1">
-            <p className="text-sm font-semibold text-ink">Connected</p>
-            <p className="text-xs text-muted">{stored ? `Key ending in ${stored} is stored in Windows Credential Manager.` : "Your key is stored in Windows Credential Manager."}</p>
+            <p className="text-body-strong text-ink">Connected</p>
+            <p className="text-caption text-muted">{stored ? `Key ending in ${stored} is stored in Windows Credential Manager.` : "Your key is stored in Windows Credential Manager."}</p>
           </div>
           <Button variant="ghost" size="sm" onClick={() => setChanging(true)}>
             Change
@@ -78,7 +78,7 @@ export function ConnectClaude({ next, back }: StepProps) {
               <>
                 Create one at{" "}
                 <button type="button" className="inline-flex items-center gap-1 font-medium text-ember-text underline-offset-2 hover:underline" onClick={() => void openExternal(KEYS_URL)}>
-                  console.anthropic.com <ExternalLink size={11} aria-hidden />
+                  console.anthropic.com <ExternalLink size={16} strokeWidth={1.5} aria-hidden />
                 </button>
                 . It's saved only on this PC.
               </>
@@ -104,12 +104,12 @@ export function ConnectClaude({ next, back }: StepProps) {
         </div>
       )}
 
-      <p className="mt-5 text-[13px] leading-relaxed text-muted">
+      <p className="mt-5 text-body text-muted">
         Cost, plainly: about <span className="font-medium text-ink">$0.0003 per dictation</span> with Claude Haiku 5.5, roughly 3,000 dictations per dollar. Only the text of what you said is sent, never audio.
       </p>
 
-      <StepFooter onBack={back} nextLabel={stored !== null ? "Continue" : "Skip — use without AI"} nextVariant={stored !== null ? "primary" : "secondary"} />
-      {stored === null && <p className="mt-2 text-right text-xs text-faint">You can add a key later in Settings. Utter still cleans up text locally.</p>}
+      <StepFooter onBack={back} nextLabel={stored !== null ? "Continue" : "Skip for now"} nextVariant={stored !== null ? "primary" : "secondary"} />
+      {stored === null && <p className="mt-2 text-right text-caption text-faint">You can add a key later in Settings. Utter still cleans up text locally.</p>}
     </StepFrame>
   );
 }

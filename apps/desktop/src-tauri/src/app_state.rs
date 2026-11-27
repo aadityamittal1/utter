@@ -192,19 +192,21 @@ impl AppState {
         }
     }
 
-    pub fn pill_allowed(&self) -> bool {
-        if !self.settings.read().show_pill {
-            return false;
-        }
-        let mut h = self.pill_hidden_until.lock();
-        match *h {
-            Some(t) if t > Instant::now() => false,
-            Some(_) => {
-                *h = None;
-                true
+    /// May the pill be on screen in state `kind`? Hidden for an hour hides everything; the
+    /// "Show the pill at all times" setting only controls the resting (idle) pill.
+    pub fn pill_allowed(&self, kind: PillKind) -> bool {
+        let hidden = {
+            let mut h = self.pill_hidden_until.lock();
+            match *h {
+                Some(t) if t > Instant::now() => true,
+                Some(_) => {
+                    *h = None;
+                    false
+                }
+                None => false,
             }
-            None => true,
-        }
+        };
+        crate::windows::pill_allowed_by(self.settings.read().show_pill, hidden, kind)
     }
 
     // ---- pill ----
@@ -241,7 +243,7 @@ impl AppState {
             crate::windows::MENU_OPEN.store(false, Ordering::Relaxed);
         }
         self.emit("pill://state", st.clone());
-        crate::windows::sync_pill(&self.app, &st, self.pill_allowed());
+        crate::windows::sync_pill(&self.app, &st, self.pill_allowed(kind));
         crate::tray::sync_icon(
             &self.app,
             matches!(kind, PillKind::Listening | PillKind::Locked),

@@ -5,7 +5,7 @@ import { ipc } from "../../lib/ipc";
 import { toast, useSettings } from "../../lib/store";
 import type { Action, Transform } from "../../lib/types";
 import { actionLabel, conflictsFor, findConflicts, removeBinding, setBinding } from "./helpers";
-import { Section, WithSettings } from "./parts";
+import { Group, Row, WithSettings } from "./parts";
 
 const CORE: Array<{ action: Action; title: string; hint: string }> = [
   { action: "dictate", title: "Dictate", hint: "Hold to talk, release to insert. Double-tap to go hands-free." },
@@ -50,24 +50,20 @@ export default function Shortcuts() {
           }
         };
         return (
-          <div className="flex flex-col gap-4">
+          <>
             {allConflicts.length > 0 && (
-              <p role="alert" className="flex items-center gap-2 rounded-control bg-danger-soft px-3 py-2 text-[13px] text-danger">
-                <AlertTriangle size={14} aria-hidden />
+              <p role="alert" className="flex items-center gap-2 rounded-control bg-danger-soft px-3 py-2 text-body text-danger">
+                <AlertTriangle size={16} strokeWidth={1.5} aria-hidden />
                 {allConflicts.length === 1 ? "One shortcut is" : `${allConflicts.length} shortcuts are`} used by more than one action. Only one will fire.
               </p>
             )}
-            <Section title="Shortcuts" description="Click a shortcut, then press the keys you want. Each action can have more than one.">
+            <Group description="Select a shortcut, then press the keys you want. Each action can have more than one.">
               {rows.map(({ action, title, hint }) => {
                 const chords = s.shortcuts[action] ?? [];
                 const slots = chords.length === 0 ? [""] : adding === action ? [...chords, ""] : chords;
                 return (
-                  <div key={action} className="flex items-start justify-between gap-6 py-3.5">
-                    <div className="min-w-0 pt-1.5">
-                      <div className="text-sm font-medium text-ink">{title}</div>
-                      <div className="mt-0.5 max-w-[44ch] text-[13px] text-muted">{hint}</div>
-                    </div>
-                    <div className="flex shrink-0 flex-col items-end gap-2">
+                  <Row key={action} top title={title} description={hint}>
+                    <div className="flex flex-col items-end gap-2">
                       {slots.map((chord, i) => {
                         const clash = chord ? conflictsFor(s.shortcuts, action, chord) : [];
                         return (
@@ -83,18 +79,18 @@ export default function Shortcuts() {
                               />
                               {!chord && adding === action && (
                                 <IconButton label={`Cancel adding ${title} shortcut`} onClick={() => setAdding(null)}>
-                                  <X size={15} />
+                                  <X size={16} strokeWidth={1.5} />
                                 </IconButton>
                               )}
                               {chord && (
                                 <IconButton label={`Remove ${title} shortcut`} onClick={() => mutate((cur) => removeBinding(cur, action, i))}>
-                                  <X size={15} />
+                                  <X size={16} strokeWidth={1.5} />
                                 </IconButton>
                               )}
                             </div>
                             {clash.length > 0 && (
-                              <p role="alert" className="flex items-center gap-1 text-xs text-danger">
-                                <AlertTriangle size={12} aria-hidden />
+                              <p role="alert" className="flex items-center gap-1 text-caption text-danger">
+                                <AlertTriangle size={16} strokeWidth={1.5} aria-hidden />
                                 Also used by {clash.map((a) => actionLabel(a, names)).join(", ")}
                               </p>
                             )}
@@ -102,21 +98,21 @@ export default function Shortcuts() {
                         );
                       })}
                       {chords.length > 0 && adding !== action && (
-                        <Button size="sm" variant="ghost" icon={<Plus size={14} />} onClick={() => setAdding(action)}>
+                        <Button size="sm" variant="ghost" icon={<Plus size={16} strokeWidth={1.5} />} onClick={() => setAdding(action)}>
                           Add another
                         </Button>
                       )}
                     </div>
-                  </div>
+                  </Row>
                 );
               })}
-            </Section>
+            </Group>
             <div>
-              <Button icon={<RotateCcw size={15} />} onClick={() => void reset()}>
+              <Button icon={<RotateCcw size={16} strokeWidth={1.5} />} onClick={() => void reset()}>
                 Reset all to defaults
               </Button>
             </div>
-          </div>
+          </>
         );
       }}
     </WithSettings>

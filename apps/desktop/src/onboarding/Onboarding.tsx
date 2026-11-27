@@ -112,7 +112,7 @@ export default function Onboarding() {
         <Logo height={17} />
         <div className="flex items-center gap-4">
           {downloading && progress && (
-            <span className="text-xs text-muted" aria-live="polite">
+            <span className="text-caption text-muted" aria-live="polite">
               Downloading model · {Math.round((progress.downloaded / Math.max(1, progress.total)) * 100)}% of {formatBytes(progress.total)}
             </span>
           )}
@@ -122,7 +122,7 @@ export default function Onboarding() {
               <span
                 key={s.label}
                 className={cn(
-                  "block h-1.5 rounded-full transition-all duration-300",
+                  "block h-1.5 rounded-full transition-[width,background-color] duration-[333ms] ease-fluent",
                   i === step ? "w-6 bg-ember" : i < step ? "w-1.5 bg-ember/60" : "w-1.5 bg-line-strong",
                 )}
               />

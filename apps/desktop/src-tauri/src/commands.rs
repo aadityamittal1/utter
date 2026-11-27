@@ -127,7 +127,7 @@ fn after_commit(st: &Arc<AppState>, old: &Settings, new: &Settings) {
     }
     if old.show_pill != new.show_pill {
         let cur = st.pill.lock().clone();
-        crate::windows::sync_pill(&st.app, &cur, st.pill_allowed());
+        crate::windows::sync_pill(&st.app, &cur, st.pill_allowed(cur.state));
     }
     if old.history_retention != new.history_retention && new.history_retention != Retention::Forever
     {
@@ -164,7 +164,7 @@ pub async fn complete_onboarding(st: St<'_>) -> CmdResult<()> {
     update_settings_with(&st, |s| s.onboarded = true)?;
     // The resting pill is part of a finished setup: make sure it is up (idempotent).
     let cur = st.pill.lock().clone();
-    crate::windows::sync_pill(&st.app, &cur, st.pill_allowed());
+    crate::windows::sync_pill(&st.app, &cur, st.pill_allowed(cur.state));
     Ok(())
 }
 
@@ -480,7 +480,7 @@ pub fn pill_action(st: St, action: String) -> CmdResult<()> {
             std::thread::spawn(move || {
                 std::thread::sleep(Duration::from_secs(3600));
                 let cur = state.pill.lock().clone();
-                crate::windows::sync_pill(&state.app, &cur, state.pill_allowed());
+                crate::windows::sync_pill(&state.app, &cur, state.pill_allowed(cur.state));
             });
         }
         // The pill UI shows its menu inside the 340x40 menu rect; keep that rect interactive.
