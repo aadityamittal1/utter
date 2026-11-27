@@ -63,7 +63,7 @@ pub fn pill_capsule_rect(kind: PillKind, hover: bool) -> (i32, i32, u32, u32) {
         PillKind::Listening => (148, 36),
         PillKind::Locked => (212, 36),
         PillKind::Thinking => (72, 36),
-        PillKind::Done => (148, 36),
+        PillKind::Done => (212, 36),
         PillKind::Error => (280, 36),
     };
     let x = (PILL_W as i32 - w as i32) / 2;
@@ -314,7 +314,7 @@ mod tests {
         assert_eq!(size(PillKind::Listening, false), (148, 36));
         assert_eq!(size(PillKind::Locked, false), (212, 36));
         assert_eq!(size(PillKind::Thinking, false), (72, 36));
-        assert_eq!(size(PillKind::Done, false), (148, 36));
+        assert_eq!(size(PillKind::Done, false), (212, 36));
         assert_eq!(size(PillKind::Error, false), (280, 36));
         // hover only affects idle
         assert_eq!(size(PillKind::Locked, true), (212, 36));
