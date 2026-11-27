@@ -17,6 +17,12 @@ export function AppShell() {
     void load();
   }, [load]);
 
+  // A settings request that arrived before onboarding finished must not pop open afterwards.
+  const onboarded = settings?.onboarded;
+  useEffect(() => {
+    if (onboarded === false) useNav.getState().closeSettings();
+  }, [onboarded]);
+
   if (loading)
     return (
       <div className="flex h-full flex-col bg-bg" aria-busy="true">

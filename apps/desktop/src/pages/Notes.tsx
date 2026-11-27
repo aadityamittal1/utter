@@ -95,7 +95,7 @@ export default function Notes() {
                 className="h-10 w-full rounded-control border border-line bg-surface pl-9 pr-3 text-body placeholder:text-faint transition-colors duration-[167ms] ease-fluent hover:border-line-strong"
               />
             </div>
-            <ul className="min-h-0 flex-1 overflow-y-auto overscroll-contain" aria-label="Notes">
+            <ul className="min-h-0 flex-1 overflow-y-auto overscroll-contain p-1" aria-label="Notes">
               {shown.length === 0 && <li className="px-3 py-6 text-center text-body text-muted">No notes match.</li>}
               {shown.map((n) => (
                 <li key={n.id}>

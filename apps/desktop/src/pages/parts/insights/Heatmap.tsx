@@ -45,7 +45,7 @@ export function Heatmap({ data }: { data: number[][] }) {
           <div key={d} className="contents">
             <div className="flex items-center text-caption text-faint">{DAYS[d]}</div>
             {row.map((v, h) => (
-              <div key={h} onMouseEnter={() => setActive({ d, h })} onMouseLeave={() => setActive(null)} className="aspect-square min-h-3 rounded-sm" style={cellStyle(heatLevel(v, max))} />
+              <div key={h} onMouseEnter={() => setActive({ d, h })} onMouseLeave={() => setActive(null)} className="aspect-square rounded-sm" style={cellStyle(heatLevel(v, max))} />
             ))}
           </div>
         ))}

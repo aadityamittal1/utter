@@ -11,7 +11,7 @@ export default function System() {
               <Row title="Launch app at login" description="Start Utter in the tray when you sign in to Windows.">
                 <Switch label="Launch app at login" checked={s.launchAtLogin} onChange={(launchAtLogin) => void update({ launchAtLogin })} />
               </Row>
-              <Row title="Show the pill at all times" description="Keep the small bar at the bottom of your screen, even when you aren't dictating.">
+              <Row title="Show the pill at all times" description="When off, the pill only appears while you dictate.">
                 <Switch label="Show the pill at all times" checked={s.showPill} onChange={(showPill) => void update({ showPill })} />
               </Row>
             </Group>

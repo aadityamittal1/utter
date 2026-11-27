@@ -1,4 +1,4 @@
-import { useState } from "react";
+import { useEffect, useRef, useState } from "react";
 import { ArrowLeft } from "lucide-react";
 import { Button, Chord, Input, Select, Switch } from "../../components/ui";
 import type { AccentSource, ThemePref } from "../../lib/types";
@@ -9,12 +9,25 @@ import Shortcuts from "./Shortcuts";
 
 export default function General() {
   const [view, setView] = useState<"main" | "shortcuts">("main");
+  const backRef = useRef<HTMLButtonElement>(null);
+  const changeRef = useRef<HTMLButtonElement>(null);
+  const moved = useRef(false);
+
+  // Keep keyboard focus with the user across the in-place view swap.
+  useEffect(() => {
+    if (!moved.current) return;
+    (view === "shortcuts" ? backRef : changeRef).current?.focus();
+  }, [view]);
+  const go = (v: "main" | "shortcuts") => {
+    moved.current = true;
+    setView(v);
+  };
 
   if (view === "shortcuts") {
     return (
       <SettingsPage title="Shortcuts">
         <div className="-mt-4">
-          <Button variant="ghost" size="sm" icon={<ArrowLeft size={16} strokeWidth={1.5} aria-hidden />} onClick={() => setView("main")}>
+          <Button ref={backRef} variant="ghost" size="sm" icon={<ArrowLeft size={16} strokeWidth={1.5} aria-hidden />} onClick={() => go("main")}>
             Back to General
           </Button>
         </div>
@@ -37,7 +50,7 @@ export default function General() {
                   </span>
                 }
               >
-                <RaisedButton onClick={() => setView("shortcuts")}>Change</RaisedButton>
+                <RaisedButton ref={changeRef} onClick={() => go("shortcuts")}>Change</RaisedButton>
               </Row>
             </Group>
 

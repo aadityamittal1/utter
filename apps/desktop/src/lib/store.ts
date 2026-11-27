@@ -130,6 +130,16 @@ interface NavStore {
   toggleSidebar: () => void;
 }
 
+/** A "#settings" link on first load opens the dialog; the hash then goes back to the page. */
+const bootsIntoSettings = typeof location !== "undefined" && location.hash.replace(/^#\/?/, "") === "settings";
+if (bootsIntoSettings) {
+  try {
+    history.replaceState(null, "", "#home");
+  } catch {
+    /* ignore */
+  }
+}
+
 /** Current page. Mirrored in the URL hash so reloads and deep links keep their place. */
 export const useNav = create<NavStore>((set, get) => ({
   page: pageFromHash(),
@@ -143,9 +153,13 @@ export const useNav = create<NavStore>((set, get) => ({
       /* ignore */
     }
   },
-  settingsOpen: false,
+  settingsOpen: bootsIntoSettings,
   settingsSection: "general",
-  openSettings: (section) => set({ settingsOpen: true, settingsSection: asSection(section) }),
+  openSettings: (section) => {
+    // Nothing opens over the onboarding flow.
+    if (useSettings.getState().settings?.onboarded === false) return;
+    set({ settingsOpen: true, settingsSection: asSection(section) });
+  },
   closeSettings: () => set({ settingsOpen: false }),
   setSettingsSection: (settingsSection) => set({ settingsSection }),
   sidebarCollapsed: (() => {
@@ -166,16 +180,25 @@ export const useNav = create<NavStore>((set, get) => ({
   },
 }));
 
+/** hub://navigate: a page name, where "settings" opens the dialog. */
+export function handleHubNavigate(page: string): void {
+  if ((PAGES as string[]).includes(page)) useNav.getState().navigate(page as Page);
+}
+
 /** Wire backend events and the URL hash into the stores. Call once in the shell. */
 export function useStoreListeners(): void {
   useBackendEvent("settings://changed", (s) => useSettings.getState().replace(s));
-  useBackendEvent("hub://navigate", ({ page }) => {
-    if ((PAGES as string[]).includes(page)) useNav.getState().navigate(page as Page);
-  });
+  useBackendEvent("hub://navigate", ({ page }) => handleHubNavigate(page));
   useEffect(() => {
     const onHash = () => {
-      if (location.hash.replace(/^#\/?/, "") === "settings") useNav.getState().openSettings();
-      else useNav.setState({ page: pageFromHash() });
+      if (location.hash.replace(/^#\/?/, "") === "settings") {
+        useNav.getState().openSettings();
+        try {
+          history.replaceState(null, "", `#${useNav.getState().page}`);
+        } catch {
+          /* ignore */
+        }
+      } else useNav.setState({ page: pageFromHash() });
     };
     window.addEventListener("hashchange", onHash);
     return () => window.removeEventListener("hashchange", onHash);

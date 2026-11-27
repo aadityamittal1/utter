@@ -483,7 +483,7 @@ impl Keeper {
 
         // Fullscreen first, so a foreground change into a game hides the pill instead of
         // fighting it. Skipped entirely when the pill is switched off or hidden for an hour.
-        if st.pill_allowed() {
+        if st.pill_allowed(kind) {
             self.check_fullscreen(&st, foreground);
         }
 
@@ -537,7 +537,7 @@ impl Keeper {
             .unwrap_or(false);
         if FULLSCREEN_HIDDEN.swap(hide, Ordering::Relaxed) != hide {
             let cur = st.pill.lock().clone();
-            sync_pill(&self.app, &cur, st.pill_allowed());
+            sync_pill(&self.app, &cur, st.pill_allowed(cur.state));
         }
     }
 

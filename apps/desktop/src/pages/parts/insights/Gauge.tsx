@@ -3,8 +3,8 @@ export function Gauge({ value, max, label, children }: { value: number; max: num
   const share = Math.max(0, Math.min(1, value / max));
   const arc = "M 14 94 A 80 80 0 0 1 174 94";
   return (
-    <div role="img" aria-label={label} className="relative mx-auto w-[188px]">
-      <svg viewBox="0 0 188 100" className="block w-full" aria-hidden>
+    <div role="img" aria-label={label} className="relative mx-auto w-full max-w-[188px]">
+      <svg viewBox="0 0 188 104" className="block w-full" aria-hidden>
         <path d={arc} pathLength={100} fill="none" strokeWidth={16} strokeLinecap="round" stroke="var(--surface-tertiary)" />
         {share > 0 && (
           <path

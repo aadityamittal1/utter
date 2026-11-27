@@ -6,7 +6,7 @@ import { ipc } from "../lib/ipc";
 import { formatNumber, formatUsd } from "../lib/format";
 import { useBackendEvent } from "../lib/useBackendEvent";
 import type { Category, Insights as InsightsData, Usage } from "../lib/types";
-import { Button, EmptyState, PageHeader, SkeletonRows, Tabs } from "../components/ui";
+import { Button, EmptyState, PageHeader, SkeletonRows } from "../components/ui";
 import { cn } from "../lib/cn";
 import { Heatmap } from "./parts/insights/Heatmap";
 import { BarList } from "./parts/insights/BarList";
@@ -33,8 +33,8 @@ function InsightCard({ children, className }: { children: ReactNode; className?:
 function StatLine({ label, value }: { label: string; value: string }) {
   return (
     <div className="flex items-center justify-between gap-3 text-body">
-      <span className="text-muted">{label}</span>
-      <span className="text-ink tabular-nums">{value}</span>
+      <span className="shrink-0 whitespace-nowrap text-muted">{label}</span>
+      <span className="min-w-0 truncate text-ink tabular-nums">{value}</span>
     </div>
   );
 }
@@ -95,7 +95,7 @@ export default function Insights() {
     <InsightCard>
       <h2 className="text-serif-heading text-ink">AI usage this month</h2>
       <p className="mt-1 text-body text-muted">Estimated from token counts at published rates.</p>
-      <dl className="mt-4 grid grid-cols-3 gap-4">
+      <dl className="mt-4 grid grid-cols-2 gap-4 @md:grid-cols-3">
         {[
           ["Input tokens", formatNumber(usage.monthInputTokens)],
           ["Output tokens", formatNumber(usage.monthOutputTokens)],
@@ -110,25 +110,10 @@ export default function Insights() {
     </InsightCard>
   );
 
-  // The Voice tab only exists when the backend reports voice data. It does not today.
-  const tabs = (
-    <Tabs variant="secondary" selectedKey="usage" className="mb-6">
-      <Tabs.ListContainer className="rounded-none border-b border-line bg-transparent">
-        <Tabs.List aria-label="Insights views" className="w-fit">
-          <Tabs.Tab id="usage">
-            Usage
-            <Tabs.Indicator />
-          </Tabs.Tab>
-        </Tabs.List>
-      </Tabs.ListContainer>
-    </Tabs>
-  );
-
   if (data.totalWords === 0) {
     return (
       <>
         {header}
-        {tabs}
         <div className="flex flex-col gap-5 pb-10">
           <EmptyState icon={<ChartColumn size={20} strokeWidth={1.5} />} title="Nothing to show yet" description="Dictate something and your stats will appear here." />
           {usageCard}
@@ -137,21 +122,20 @@ export default function Insights() {
     );
   }
 
+
   const saved = timeSaved(data.timeSavedMin);
   const topApp = data.topApps[0];
   return (
-    <>
+    <div className="@container">
       {header}
-      {tabs}
       <div className="flex flex-col gap-5 pb-10">
-        <div className="grid grid-cols-3 gap-5">
+        <div className="grid grid-cols-1 gap-5 @md:grid-cols-2 @3xl:grid-cols-3">
           <InsightCard>
             <div className="text-serif-figure text-ink">{formatNumber(data.avgWpm)}</div>
             <div className="mt-1 text-body text-muted">Words per minute</div>
             <div className="mt-4">
               <Gauge value={data.avgWpm} max={WPM_SCALE} label={`${formatNumber(data.avgWpm)} words per minute, on a scale to ${WPM_SCALE}`}>
-                <span className="text-caption text-muted">Average</span>
-                <span className="text-body-strong text-ink tabular-nums">{formatNumber(data.avgWpm)}</span>
+                <span className="text-caption text-muted tabular-nums">of {WPM_SCALE} wpm</span>
               </Gauge>
             </div>
           </InsightCard>
@@ -163,11 +147,11 @@ export default function Insights() {
             <div className="mt-1 text-body text-muted">Time saved by dictating</div>
             <div className="mt-4 flex flex-col gap-3 border-t border-line pt-4">
               <StatLine label="Words this week" value={formatNumber(data.weekWords)} />
-              <StatLine label="Current streak" value={days(data.currentStreak)} />
+              <StatLine label="Current streak" value={data.currentStreak > 0 ? days(data.currentStreak) : "None yet"} />
             </div>
           </InsightCard>
 
-          <InsightCard>
+          <InsightCard className="@md:col-span-2 @3xl:col-span-1">
             <div className="text-serif-figure text-ink">{formatNumber(data.totalWords)}</div>
             <div className="mt-1 text-body text-muted">Total words dictated</div>
             <div className="mt-4 flex flex-col gap-3 border-t border-line pt-4">
@@ -177,35 +161,35 @@ export default function Insights() {
           </InsightCard>
         </div>
 
-        <div className="grid grid-cols-[1.15fr_1fr] gap-5">
+        <div className="grid grid-cols-1 gap-5 @3xl:grid-cols-2">
           <InsightCard>
             <h2 className="text-serif-heading text-ink">Where you write</h2>
             <p className="mb-5 mt-1 text-body text-muted">Share of your words by type of writing.</p>
             <BarList
+              total={data.categories.reduce((n, c) => n + c.words, 0)}
               items={data.categories.map((c) => ({ label: CATEGORY_LABEL[c.category], value: c.words, icon: CATEGORY_ICON[c.category] }))}
               empty="No category data yet."
             />
           </InsightCard>
 
           <InsightCard>
-            <div className="flex items-baseline justify-between gap-3">
-              <h2 className="text-serif-heading text-ink tabular-nums">{formatNumber(data.currentStreak)}-day streak</h2>
-              <span className="text-group-label text-faint">Longest {days(data.longestStreak)}</span>
-            </div>
-            <p className="mb-5 mt-1 text-body text-muted">When you dictate, by weekday and hour.</p>
-            <Heatmap data={data.heatmap} />
+            <h2 className="text-serif-heading text-ink">Top apps</h2>
+            <p className="mb-5 mt-1 text-body text-muted">Share of all your words, per app.</p>
+            <BarList total={data.totalWords} items={data.topApps.map((a) => ({ label: a.name, value: a.words }))} empty="No app data yet." />
           </InsightCard>
         </div>
 
-        <div className="grid grid-cols-2 gap-5">
-          <InsightCard>
-            <h2 className="text-serif-heading text-ink">Top apps</h2>
-            <p className="mb-5 mt-1 text-body text-muted">Words dictated per app.</p>
-            <BarList items={data.topApps.map((a) => ({ label: a.name, value: a.words }))} empty="No app data yet." />
-          </InsightCard>
-          {usageCard}
-        </div>
+        <InsightCard>
+          <div className="flex flex-wrap items-baseline justify-between gap-x-3">
+            <h2 className="text-serif-heading text-ink tabular-nums">{data.currentStreak > 0 ? `${formatNumber(data.currentStreak)}-day streak` : "No streak yet"}</h2>
+            <span className="text-caption text-muted tabular-nums">Longest {days(data.longestStreak)}</span>
+          </div>
+          <p className="mb-5 mt-1 text-body text-muted">When you dictate, by weekday and hour.</p>
+          <Heatmap data={data.heatmap} />
+        </InsightCard>
+
+        {usageCard}
       </div>
-    </>
+    </div>
   );
 }

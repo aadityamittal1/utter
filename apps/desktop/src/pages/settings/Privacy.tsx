@@ -1,6 +1,6 @@
 import { useEffect, useState } from "react";
 import { ArrowDown, ArrowUp, Plus, Trash2 } from "lucide-react";
-import { Button, IconButton, Input, Select, Switch } from "../../components/ui";
+import { IconButton, Input, Select, Switch } from "../../components/ui";
 import { ipc } from "../../lib/ipc";
 import { toast } from "../../lib/store";
 import { CATEGORIES, type Category, type CategoryRule, type HistoryRetention } from "../../lib/types";
@@ -174,9 +174,9 @@ function RulesEditor({ rules, onChange }: { rules: CategoryRule[]; onChange: (r:
         )}
       </div>
       <div>
-        <Button size="sm" variant="secondary" className="bg-(--surface-tertiary)" icon={<Plus size={16} strokeWidth={1.5} />} onClick={() => setDraft([...draft, { category: "other" }])}>
+        <RaisedButton icon={<Plus size={16} strokeWidth={1.5} />} onClick={() => setDraft([...draft, { category: "other" }])}>
           Add rule
-        </Button>
+        </RaisedButton>
       </div>
     </Block>
   );

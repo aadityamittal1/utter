@@ -2,7 +2,7 @@ import { act } from "react";
 import { createRoot, type Root } from "react-dom/client";
 import { afterEach, beforeEach, describe, expect, it } from "vitest";
 import SettingsDialog from "./SettingsDialog";
-import { useNav, useSettings, type SettingsSection } from "../../lib/store";
+import { handleHubNavigate, useNav, useSettings, type SettingsSection } from "../../lib/store";
 
 (globalThis as { IS_REACT_ACT_ENVIRONMENT?: boolean }).IS_REACT_ACT_ENVIRONMENT = true;
 
@@ -71,5 +71,28 @@ describe("SettingsDialog", () => {
     await flush();
     expect(document.body.querySelector("h1")?.textContent).toBe("System");
     expect(useNav.getState().settingsSection).toBe("system");
+  });
+
+  it("Escape closes the dialog", async () => {
+    act(() => useNav.getState().openSettings());
+    await flush();
+    const dialog = document.body.querySelector("[role=dialog]")!;
+    expect(dialog).not.toBeNull();
+    await act(async () => {
+      dialog.dispatchEvent(new KeyboardEvent("keydown", { key: "Escape", bubbles: true }));
+    });
+    await flush();
+    expect(useNav.getState().settingsOpen).toBe(false);
+  });
+});
+
+describe("settings navigation", () => {
+  it("hub://navigate settings opens the dialog and leaves the page alone", () => {
+    useNav.setState({ page: "history", settingsOpen: false });
+    handleHubNavigate("settings");
+    expect(useNav.getState()).toMatchObject({ page: "history", settingsOpen: true });
+    useNav.getState().closeSettings();
+    handleHubNavigate("notes");
+    expect(useNav.getState().page).toBe("notes");
   });
 });

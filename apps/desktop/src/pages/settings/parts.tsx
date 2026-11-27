@@ -50,7 +50,7 @@ export function Block({ children, className }: { children: ReactNode; className?
 
 /** The raised "Change"-style button: a step darker than the card it sits on. */
 export function RaisedButton({ className, ...props }: ButtonProps) {
-  return <Button variant="secondary" size="sm" className={cn("bg-(--surface-tertiary)", className)} {...props} />;
+  return <Button variant="secondary" size="sm" className={cn("button--raised", className)} {...props} />;
 }
 
 export function Badge({ children, tone = "neutral" }: { children: ReactNode; tone?: "neutral" | "ember" | "success" }) {

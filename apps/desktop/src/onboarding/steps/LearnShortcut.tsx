@@ -78,7 +78,7 @@ export function LearnShortcut({ next, back }: StepProps) {
               {i > 0 && <span className="text-faint" aria-hidden>+</span>}
               <kbd
                 className={cn(
-                  "inline-flex h-12 min-w-14 items-center justify-center rounded-control border border-b-[3px] px-4 font-mono text-body-lg font-medium transition-[background-color,border-color,color] duration-[167ms] ease-fluent",
+                  "inline-flex h-12 min-w-14 items-center justify-center rounded-control border border-b-[3px] px-4 font-mono text-body-lg font-medium transition-[background-color,border-color,color,transform] duration-[167ms] ease-fluent",
                   active
                     ? "-translate-y-0.5 border-ember bg-ember text-on-accent shadow-[0_6px_18px_-6px_var(--accent-fill)]"
                     : "border-line-strong bg-surface text-ink",

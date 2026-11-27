@@ -85,13 +85,19 @@ export default function SettingsDialog() {
         >
           <div className="flex h-full min-h-0">
             <aside className="flex w-[232px] shrink-0 flex-col bg-bg px-3 pb-4 pt-5">
-              <nav aria-label="Settings sections" className="flex min-h-0 flex-1 flex-col gap-6 overflow-y-auto overscroll-contain">
+              <nav aria-label="Settings sections" className="-mx-1 flex min-h-0 flex-1 flex-col gap-6 overflow-y-auto overscroll-contain px-1">
                 {GROUPS.map((g) => (
-                  <div key={g.label} className="flex flex-col gap-0.5">
-                    <div className="px-3 pb-2 text-group-label text-faint">{g.label}</div>
-                    {g.items.map((item) => (
-                      <NavButton key={item.id} item={item} active={item.id === section} onPress={() => setSection(item.id)} />
-                    ))}
+                  <div key={g.label}>
+                    <div id={`settings-group-${g.label}`} className="px-3 pb-2 text-group-label text-faint">
+                      {g.label}
+                    </div>
+                    <ul aria-labelledby={`settings-group-${g.label}`} className="flex flex-col gap-0.5">
+                      {g.items.map((item) => (
+                        <li key={item.id}>
+                          <NavButton item={item} active={item.id === section} onPress={() => setSection(item.id)} />
+                        </li>
+                      ))}
+                    </ul>
                   </div>
                 ))}
               </nav>

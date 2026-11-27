@@ -304,6 +304,13 @@
   --button-bg-pressed: var(--active);
 }
 
+/* Raised buttons sit on raised cards: one step darker, with real hover and pressed states. */
+.button--secondary.button--raised {
+  --button-bg: var(--surface-tertiary);
+  --button-bg-hover: color-mix(in oklab, var(--surface-tertiary), var(--text) 8%);
+  --button-bg-pressed: color-mix(in oklab, var(--surface-tertiary), var(--text) 14%);
+}
+
 /* Overlays: explicit radii, and a real border so forced-colors keeps the edge. */
 .popover,
 .dropdown__popover,
