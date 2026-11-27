@@ -588,3 +588,9 @@ mod tests {
         assert!(parse_id("abc").is_err());
     }
 }
+
+/// Windows accent colour, text scale and backdrop for the UI (see `system`).
+#[tauri::command]
+pub fn get_system_appearance() -> crate::system::SystemAppearance {
+    crate::system::current()
+}

@@ -16,6 +16,9 @@ pub mod settings;
 pub mod sounds;
 pub mod store;
 pub mod stt;
+pub mod system;
+#[cfg(target_os = "windows")]
+pub mod system_windows;
 pub mod text;
 pub mod tray;
 pub mod windows;
@@ -95,6 +98,7 @@ fn setup(app: &mut tauri::App) -> Result<(), Box<dyn std::error::Error>> {
         })?;
 
     commands::preload_engine(&st);
+    system::start_watcher(handle.clone());
 
     // Launch at login (not for dev builds, which would register a debug exe).
     if !cfg!(debug_assertions) {
@@ -148,6 +152,7 @@ pub fn run() {
             commands::start_shortcut_capture,
             commands::stop_shortcut_capture,
             commands::pill_action,
+            commands::get_system_appearance,
             commands_data::history_list,
             commands_data::history_update_text,
             commands_data::history_retry,
