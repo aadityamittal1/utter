@@ -85,3 +85,43 @@ export function renderExample(style: StyleKind, category: Category): string {
       return `Hey${to(" ")}, can you ${task}? Thanks so much!!`;
   }
 }
+
+/** One-line description of how each style writes (the card sub-line). */
+export const STYLE_TRAITS: Record<StyleKind, string> = {
+  formal: "Capitals and full punctuation",
+  casual: "Capitals and lighter punctuation",
+  veryCasual: "No capitals, lighter punctuation",
+  excited: "Capitals and exclamation marks",
+};
+
+export type ContextTab = "personal" | "work" | "email" | "other";
+
+/** The four tabs, and which app types each one edits. "other" groups the rarely changed ones. */
+export const CONTEXT_TABS: { id: ContextTab; label: string; categories: Category[] }[] = [
+  { id: "personal", label: "Personal messages", categories: ["personalChat"] },
+  { id: "work", label: "Work messages", categories: ["workChat"] },
+  { id: "email", label: "Email", categories: ["email"] },
+  { id: "other", label: "Other", categories: ["other", "aiPrompt", "code", "document"] },
+];
+
+/** Headline for the banner above a category's style cards. */
+export const BANNER_TITLES: Record<Category, string> = {
+  personalChat: "This style applies in personal messengers",
+  workChat: "This style applies in work chat",
+  email: "This style applies in email",
+  aiPrompt: "This style applies when you prompt an AI",
+  code: "This style applies in editors and terminals",
+  document: "This style applies in documents",
+  other: "This style applies everywhere else",
+};
+
+/** Example apps shown as plain text chips. The match itself is by app, window title and your rules. */
+export const CATEGORY_APPS: Record<Category, string[]> = {
+  personalChat: ["WhatsApp", "Messages", "Discord", "Telegram"],
+  workChat: ["Slack", "Teams", "Zoom chat"],
+  email: ["Outlook", "Gmail", "Thunderbird"],
+  aiPrompt: ["Claude", "ChatGPT", "Gemini"],
+  code: ["VS Code", "Terminal", "JetBrains"],
+  document: ["Word", "Notion", "Google Docs"],
+  other: ["Any other app"],
+};

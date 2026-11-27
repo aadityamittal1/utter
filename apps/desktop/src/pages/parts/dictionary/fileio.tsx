@@ -20,7 +20,7 @@ export function downloadText(filename: string, text: string, mime = "text/csv"):
  * A button that opens a hidden file input and hands back the chosen file's text.
  * Shows a busy state while reading and importing; reading failures become a toast.
  */
-export function ImportButton({ onText, children, disabled }: { onText: (text: string) => void | Promise<void>; children: ReactNode; disabled?: boolean }) {
+export function ImportButton({ onText, children, disabled, variant = "primary" }: { onText: (text: string) => void | Promise<void>; children: ReactNode; disabled?: boolean; variant?: "primary" | "secondary" }) {
   const ref = useRef<HTMLInputElement>(null);
   const [busy, setBusy] = useState(false);
   return (
@@ -47,7 +47,7 @@ export function ImportButton({ onText, children, disabled }: { onText: (text: st
           }
         }}
       />
-      <Button size="sm" loading={busy} disabled={disabled} onClick={() => ref.current?.click()}>
+      <Button variant={variant} loading={busy} disabled={disabled} onClick={() => ref.current?.click()}>
         {children}
       </Button>
     </>

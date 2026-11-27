@@ -1,6 +1,20 @@
 import { describe, expect, it } from "vitest";
 import { CATEGORIES, STYLE_KINDS } from "../../../lib/types";
-import { allowedStyles, disabledReason, isStyleAllowed, nextStyle, renderExample } from "./examples";
+import { allowedStyles, BANNER_TITLES, CATEGORY_APPS, CONTEXT_TABS, disabledReason, isStyleAllowed, nextStyle, renderExample, STYLE_TRAITS } from "./examples";
+
+describe("context tabs", () => {
+  it("cover every category exactly once", () => {
+    const all = CONTEXT_TABS.flatMap((t) => t.categories);
+    expect([...all].sort()).toEqual([...CATEGORIES].sort());
+  });
+  it("every category has a banner title and apps, every style a trait", () => {
+    for (const c of CATEGORIES) {
+      expect(BANNER_TITLES[c]).toBeTruthy();
+      expect(CATEGORY_APPS[c].length).toBeGreaterThan(0);
+    }
+    for (const s of STYLE_KINDS) expect(STYLE_TRAITS[s]).toBeTruthy();
+  });
+});
 
 describe("renderExample", () => {
   it("renders distinct text for every style", () => {

@@ -312,3 +312,36 @@
 .select__trigger:not([data-invalid="true"]) {
   border-bottom-color: var(--text-faint);
 }
+
+/*
+ * Theme scale: fonts, radii and curves behind the font-*, rounded-* and ease-fluent utilities
+ * (the foundation referenced them but never declared them), plus the dark banner surface
+ * used by the page banners (always dark, in both themes).
+ */
+@theme {
+  --font-sans: "Segoe UI Variable Text", "Segoe UI Variable", "Segoe UI", system-ui, sans-serif;
+  --font-display: "Segoe UI Variable Display", "Segoe UI Variable", "Segoe UI", system-ui, sans-serif;
+  --font-serif: "Instrument Serif", Georgia, "Times New Roman", serif;
+  --font-mono: "Cascadia Mono", "Cascadia Code", Consolas, ui-monospace, monospace;
+  --radius-control: 10px;
+  --radius-card: 16px;
+  --radius-panel: 16px;
+  --radius-shell: 20px;
+  --ease-fluent: cubic-bezier(0, 0, 0, 1);
+  --ease-fluent-exit: cubic-bezier(1, 0, 1, 1);
+}
+
+:root {
+  --banner: #1a1814;
+  --on-banner: #f4f2ee;
+  --on-banner-muted: #c4bfb6;
+}
+.dark,
+[data-theme="dark"] {
+  --banner: #151412;
+}
+@theme inline {
+  --color-banner: var(--banner);
+  --color-on-banner: var(--on-banner);
+  --color-on-banner-muted: var(--on-banner-muted);
+}

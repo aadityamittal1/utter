@@ -1,16 +1,21 @@
 import { useEffect, useMemo, useRef, useState } from "react";
-import { ClipboardCopy, CornerDownLeft, Ellipsis, Pencil, Play, Plus, RotateCw, Square, Trash2, X, Sparkles } from "lucide-react";
+import { Copy, CornerDownLeft, Ellipsis, FileDiff, Pencil, Play, Plus, RotateCw, Sparkles, Square, Trash2, X } from "lucide-react";
 import { ipc } from "../../../lib/ipc";
 import { formatTime } from "../../../lib/format";
 import { toast } from "../../../lib/store";
 import type { HistoryItem } from "../../../lib/types";
-import { Button, IconButton, Textarea } from "../../../components/ui";
+import { Button, Dropdown, IconButton, Textarea } from "../../../components/ui";
+import { Label } from "@heroui/react";
 import { CATEGORY_LABEL } from "./shared";
 import { wordDiff } from "./diff";
 import { playClip } from "./player";
 
 const errText = (e: unknown) => (typeof e === "string" ? e : e instanceof Error ? e.message : "Something went wrong");
 
+/**
+ * One dictation: time column, text, and hover actions (play, copy, more).
+ * Rows sit inside a divided card (see DayList), so the row itself has no border.
+ */
 export function HistoryRow({ item, onChanged }: { item: HistoryItem; onChanged: () => void }) {
   const [open, setOpen] = useState(false);
   const [editing, setEditing] = useState(false);
@@ -93,9 +98,38 @@ export function HistoryRow({ item, onChanged }: { item: HistoryItem; onChanged: 
     }
   }
 
+  const onMenu = (key: string | number) => {
+    switch (key) {
+      case "insert":
+        return void run("insert", () => ipc.historyInsert(item.id));
+      case "retry":
+        return void run(
+          "retry",
+          async () => {
+            await ipc.historyRetry(item.id);
+            onChanged();
+          },
+          "Retried",
+        );
+      case "details":
+        return setOpen((o) => !o);
+      case "edit":
+        setDraft(item.finalText);
+        return setEditing(true);
+      case "delete":
+        return void run("delete", async () => {
+          await ipc.historyDelete(item.id);
+          onChanged();
+        });
+    }
+  };
+
   return (
-    <li className="group rounded-card px-3 py-3 transition-colors hover:bg-hover focus-within:bg-hover">
-      <div className="flex items-start gap-3">
+    <li className="group px-5 py-4 transition-colors duration-[var(--dur-fast)] ease-fluent hover:bg-row-hover focus-within:bg-row-hover">
+      <div className="flex items-start">
+        <time dateTime={new Date(item.createdAt).toISOString()} className="w-20 shrink-0 pt-0.5 text-caption tabular-nums text-faint">
+          {formatTime(item.createdAt).replace(" ", "").toLowerCase()}
+        </time>
         <div className="min-w-0 flex-1">
           {editing ? (
             <div className="flex flex-col gap-2">
@@ -117,71 +151,77 @@ export function HistoryRow({ item, onChanged }: { item: HistoryItem; onChanged: 
               </div>
             </div>
           ) : (
-            <p className="line-clamp-2 text-sm leading-snug text-ink">{item.finalText || <span className="text-faint">(empty)</span>}</p>
+            <p className="line-clamp-3 break-words text-body text-ink">{item.finalText || <span className="text-faint">(empty)</span>}</p>
           )}
-          <div className="mt-1.5 flex flex-wrap items-center gap-x-2 gap-y-1 text-xs text-faint">
-            <span>{item.appName}</span>
-            <span className="rounded-full border border-line px-2 py-px text-[11px] text-muted">{CATEGORY_LABEL[item.category]}</span>
-            <span>{formatTime(item.createdAt)}</span>
+          <div className="mt-1 flex flex-wrap items-center gap-x-2 gap-y-1 text-caption text-faint">
+            <span>
+              {item.appName} · {CATEGORY_LABEL[item.category]}
+            </span>
             {item.usedAi && (
-              <span className="inline-flex items-center gap-1 rounded-full bg-highlight-soft px-2 py-px text-[11px] font-medium text-ink">
-                <Sparkles size={10} aria-hidden /> AI
+              <span className="inline-flex items-center gap-1 text-ember-text">
+                <Sparkles size={12} strokeWidth={1.5} aria-hidden /> Enhanced
               </span>
             )}
             {item.error && <span className="text-danger">{item.error}</span>}
           </div>
         </div>
         {!editing && (
-          <div className="flex shrink-0 items-center opacity-0 transition-opacity group-hover:opacity-100 group-focus-within:opacity-100 [@media(hover:none)]:opacity-100">
-            <IconButton label="Copy" disabled={busy !== null} onClick={() => run("copy", () => ipc.historyCopy(item.id), "Copied")}>
-              <ClipboardCopy size={15} />
-            </IconButton>
-            <IconButton label="Insert again" disabled={busy !== null} onClick={() => run("insert", () => ipc.historyInsert(item.id))}>
-              <CornerDownLeft size={15} />
-            </IconButton>
-            <IconButton
-              label="Retry with AI"
-              disabled={busy !== null}
-              onClick={() =>
-                run(
-                  "retry",
-                  async () => {
-                    await ipc.historyRetry(item.id);
-                    onChanged();
-                  },
-                  "Retried",
-                )
-              }
-            >
-              <RotateCw size={15} className={busy === "retry" ? "animate-spin" : ""} />
-            </IconButton>
+          <div className="-my-1 ml-3 flex shrink-0 items-center opacity-0 transition-opacity duration-[var(--dur-fast)] ease-fluent focus-within:opacity-100 group-focus-within:opacity-100 group-hover:opacity-100 [@media(hover:none)]:opacity-100">
             {item.hasAudio && (
               <IconButton label={playing ? "Stop audio" : "Play audio"} onClick={togglePlay}>
-                {playing ? <Square size={14} /> : <Play size={14} />}
+                {playing ? <Square size={16} strokeWidth={1.5} /> : <Play size={16} strokeWidth={1.5} />}
               </IconButton>
             )}
-            <IconButton label={open ? "Hide details" : "More"} aria-expanded={open} onClick={() => setOpen((o) => !o)}>
-              <Ellipsis size={16} />
+            <IconButton label="Copy" disabled={busy !== null} onClick={() => run("copy", () => ipc.historyCopy(item.id), "Copied")}>
+              <Copy size={16} strokeWidth={1.5} />
             </IconButton>
+            <Dropdown>
+              <Dropdown.Trigger
+                aria-label="More actions"
+                isDisabled={busy !== null}
+                className="inline-flex size-8 items-center justify-center rounded-control text-muted outline-none transition-colors duration-[var(--dur-fast)] ease-fluent hover:bg-hover data-[pressed]:bg-active"
+              >
+                <Ellipsis size={16} strokeWidth={1.5} />
+              </Dropdown.Trigger>
+              <Dropdown.Popover placement="bottom end">
+                <Dropdown.Menu onAction={onMenu}>
+                  <Dropdown.Item id="insert" textValue="Insert again">
+                    <CornerDownLeft size={16} strokeWidth={1.5} aria-hidden />
+                    <Label>Insert again</Label>
+                  </Dropdown.Item>
+                  <Dropdown.Item id="retry" textValue="Retry with AI">
+                    <RotateCw size={16} strokeWidth={1.5} aria-hidden />
+                    <Label>Retry with AI</Label>
+                  </Dropdown.Item>
+                  <Dropdown.Item id="details" textValue={open ? "Hide changes" : "Show changes"}>
+                    <FileDiff size={16} strokeWidth={1.5} aria-hidden />
+                    <Label>{open ? "Hide changes" : "Show changes"}</Label>
+                  </Dropdown.Item>
+                  <Dropdown.Item id="edit" textValue="Edit text">
+                    <Pencil size={16} strokeWidth={1.5} aria-hidden />
+                    <Label>Edit text</Label>
+                  </Dropdown.Item>
+                  <Dropdown.Item id="delete" textValue="Delete" variant="danger">
+                    <Trash2 size={16} strokeWidth={1.5} aria-hidden />
+                    <Label>Delete</Label>
+                  </Dropdown.Item>
+                </Dropdown.Menu>
+              </Dropdown.Popover>
+            </Dropdown>
           </div>
         )}
       </div>
 
       {candidates.length > 0 && (
-        <div className="mt-2 flex flex-wrap items-center gap-2 text-xs text-muted">
+        <div className="mt-3 flex flex-wrap items-center gap-2 pl-20 text-caption text-muted">
           <span>Add to dictionary?</span>
           {candidates.map((w) => (
-            <span key={w} className="inline-flex items-center rounded-full border border-line bg-surface text-[12px] text-ink">
+            <span key={w} className="inline-flex items-center rounded-full border border-line bg-surface text-caption text-ink">
               <button type="button" onClick={() => addWord(w)} className="inline-flex items-center gap-1 rounded-l-full py-0.5 pl-2 pr-1.5 hover:bg-hover">
-                <Plus size={11} aria-hidden /> {w}
+                <Plus size={12} strokeWidth={1.5} aria-hidden /> {w}
               </button>
-              <button
-                type="button"
-                aria-label={`Dismiss ${w}`}
-                onClick={() => setCandidates((c) => c.filter((x) => x !== w))}
-                className="rounded-r-full py-0.5 pr-1.5 text-faint hover:text-ink"
-              >
-                <X size={11} />
+              <button type="button" aria-label={`Dismiss ${w}`} onClick={() => setCandidates((c) => c.filter((x) => x !== w))} className="rounded-r-full py-0.5 pr-1.5 text-faint hover:text-ink">
+                <X size={12} strokeWidth={1.5} />
               </button>
             </span>
           ))}
@@ -189,40 +229,23 @@ export function HistoryRow({ item, onChanged }: { item: HistoryItem; onChanged: 
       )}
 
       {open && (
-        <div className="mt-3 flex flex-col gap-3 border-t border-line pt-3">
-          <div>
-            <div className="mb-1 text-[11px] font-medium text-faint">{changed ? "What you said, and what changed" : "What you said (no changes)"}</div>
-            <p className="text-[13px] leading-relaxed text-ink">
-              {diff.map((op, i) =>
-                op.kind === "same" ? (
-                  <span key={i}>{op.text} </span>
-                ) : op.kind === "del" ? (
-                  <del key={i} className="rounded-sm bg-danger-soft px-0.5 text-danger decoration-1">
-                    {op.text}{" "}
-                  </del>
-                ) : (
-                  <ins key={i} className="rounded-sm bg-success-soft px-0.5 text-success no-underline">
-                    {op.text}{" "}
-                  </ins>
-                ),
-              )}
-            </p>
-          </div>
-          <div className="flex gap-2">
-            <Button
-              size="sm"
-              icon={<Pencil size={13} />}
-              onClick={() => {
-                setDraft(item.finalText);
-                setEditing(true);
-              }}
-            >
-              Edit
-            </Button>
-            <Button size="sm" variant="danger" icon={<Trash2 size={13} />} loading={busy === "delete"} onClick={() => run("delete", async () => { await ipc.historyDelete(item.id); onChanged(); })}>
-              Delete
-            </Button>
-          </div>
+        <div className="mt-3 border-t border-line pl-20 pt-3">
+          <div className="mb-1 text-caption text-faint">{changed ? "What you said, and what changed" : "What you said (no changes)"}</div>
+          <p className="text-body text-ink">
+            {diff.map((op, i) =>
+              op.kind === "same" ? (
+                <span key={i}>{op.text} </span>
+              ) : op.kind === "del" ? (
+                <del key={i} className="rounded-sm bg-danger-soft px-0.5 text-danger decoration-1">
+                  {op.text}{" "}
+                </del>
+              ) : (
+                <ins key={i} className="rounded-sm bg-success-soft px-0.5 text-success no-underline">
+                  {op.text}{" "}
+                </ins>
+              ),
+            )}
+          </p>
         </div>
       )}
     </li>

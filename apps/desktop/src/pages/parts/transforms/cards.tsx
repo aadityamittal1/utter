@@ -1,11 +1,10 @@
 import { useState } from "react";
-import { Lock, Trash2 } from "lucide-react";
-import { Button, Card, Chord, Input, ShortcutRecorder, Textarea } from "../../../components/ui";
+import { Lock, Plus, Trash2 } from "lucide-react";
+import { Button, Chord, Input, Modal, ShortcutRecorder, Textarea } from "../../../components/ui";
+import { cn } from "../../../lib/cn";
 import { ipc } from "../../../lib/ipc";
-import { toast } from "../../../lib/store";
 import type { Transform } from "../../../lib/types";
 import { errText } from "../dictionary/useLoader";
-
 
 export function ShortcutField({ value, onChange, label }: { value: string | undefined; onChange: (v: string | undefined) => void; label: string }) {
   return (
@@ -20,137 +19,151 @@ export function ShortcutField({ value, onChange, label }: { value: string | unde
   );
 }
 
-/** Polish / Prompt engineer: instruction is fixed, only the shortcut can change. */
-export function BuiltinCard({ t, onChanged }: { t: Transform; onChanged: () => void }) {
-  const setShortcut = async (shortcut: string | undefined) => {
-    try {
-      await ipc.transformsUpdate({ ...t, shortcut });
-      onChanged();
-    } catch (e) {
-      toast.error(errText(e));
-    }
-  };
+const CARD = "flex min-h-44 flex-col items-start rounded-card p-5 text-left transition-colors duration-[var(--dur-fast)] ease-fluent";
+
+/** A transform as a card: keycaps, name, what it does. Opens the editor. */
+export function TransformCard({ t, onOpen }: { t: Transform; onOpen: () => void }) {
   return (
-    <Card className="flex items-start justify-between gap-6 p-5">
-      <div className="min-w-0">
-        <div className="flex items-center gap-2">
-          <h3 className="text-[15px] font-semibold text-ink">{t.name}</h3>
-          <span className="inline-flex items-center gap-1 rounded-full bg-muted-surface px-2 py-0.5 text-[11px] text-muted">
-            <Lock size={10} aria-hidden /> Built in
+    <button type="button" onClick={onOpen} className={cn(CARD, "border border-line bg-surface hover:border-line-strong hover:bg-row-hover")}>
+      <span className="flex min-h-6 w-full items-center justify-between gap-2">
+        {t.shortcut ? <Chord chord={t.shortcut} /> : <span className="text-caption text-faint">No shortcut</span>}
+        {t.builtin && (
+          <span className="inline-flex items-center gap-1 text-caption text-faint">
+            <Lock size={12} strokeWidth={1.5} aria-hidden /> Built in
           </span>
-        </div>
-        <p className="mt-1 max-w-[54ch] text-[13px] leading-relaxed text-muted">{t.instruction}</p>
-      </div>
-      <div className="shrink-0">
-        <div className="mb-1.5 text-right text-[11px] font-medium text-faint">Shortcut</div>
-        <ShortcutField value={t.shortcut} onChange={setShortcut} label={t.name} />
-      </div>
-    </Card>
+        )}
+      </span>
+      <span className="mt-auto block text-body-strong text-ink">{t.name}</span>
+      <span className="mt-1 line-clamp-2 block text-body text-muted">{t.instruction}</span>
+    </button>
   );
 }
 
-export interface CustomDraft {
+/** The dashed "Create your own" card. */
+export function CreateCard({ onClick, disabled, hint }: { onClick: () => void; disabled?: boolean; hint?: string }) {
+  return (
+    <button
+      type="button"
+      onClick={onClick}
+      disabled={disabled}
+      title={hint}
+      className={cn(CARD, "border border-dashed border-line-strong bg-transparent enabled:hover:bg-row-hover disabled:cursor-not-allowed disabled:opacity-60")}
+    >
+      <span className="flex size-6 items-center justify-center rounded-full bg-muted-surface text-ink">
+        <Plus size={16} strokeWidth={1.5} aria-hidden />
+      </span>
+      <span className="mt-auto block text-body-strong text-ink">Create your own</span>
+      <span className="mt-1 block text-body text-muted">{hint ?? "Write your own instruction"}</span>
+    </button>
+  );
+}
+
+export interface TransformDraft {
   id?: string;
   name: string;
   instruction: string;
   shortcut?: string;
+  builtin?: boolean;
 }
 
-export function CustomCard({ initial, onSaved, onDiscard, onDelete }: { initial: CustomDraft; onSaved: () => void; onDiscard?: () => void; onDelete?: () => void }) {
+const FORM_ID = "transform-form";
+
+/** Create or edit a transform. Built-ins show their instruction read-only: only the shortcut changes. */
+export function TransformModal({ initial, onClose, onSaved, onDelete }: { initial: TransformDraft; onClose: () => void; onSaved: () => void; onDelete?: () => void }) {
   const [name, setName] = useState(initial.name);
   const [instruction, setInstruction] = useState(initial.instruction);
   const [shortcut, setShortcut] = useState(initial.shortcut);
   const [error, setError] = useState<string | null>(null);
   const [busy, setBusy] = useState(false);
 
-  const dirty = name !== initial.name || instruction !== initial.instruction || shortcut !== initial.shortcut;
+  const builtin = !!initial.builtin;
   const isNew = !initial.id;
+  const dirty = name !== initial.name || instruction !== initial.instruction || shortcut !== initial.shortcut;
 
   const save = async () => {
-    if (!name.trim()) return setError("Give it a name.");
-    if (!instruction.trim()) return setError("Say what it should do to your text.");
+    if (!builtin) {
+      if (!name.trim()) return setError("Give it a name.");
+      if (!instruction.trim()) return setError("Say what it should do to your text.");
+    }
     setBusy(true);
     try {
-      if (initial.id) await ipc.transformsUpdate({ id: initial.id, name: name.trim(), instruction: instruction.trim(), shortcut, builtin: false });
+      if (builtin && initial.id) await ipc.transformsUpdate({ id: initial.id, name: initial.name, instruction: initial.instruction, shortcut, builtin: true });
+      else if (initial.id) await ipc.transformsUpdate({ id: initial.id, name: name.trim(), instruction: instruction.trim(), shortcut, builtin: false });
       else await ipc.transformsAdd(name.trim(), instruction.trim(), shortcut);
       setError(null);
       onSaved();
     } catch (e) {
       setError(errText(e));
-    } finally {
       setBusy(false);
     }
   };
 
   return (
-    <Card className="p-5">
+    <Modal
+      isOpen
+      onClose={onClose}
+      title={isNew ? "Create a transform" : builtin ? initial.name : "Edit transform"}
+      footer={
+        <>
+          {onDelete && (
+            <Button variant="danger" icon={<Trash2 size={16} strokeWidth={1.5} />} onClick={onDelete} className="mr-auto">
+              Delete
+            </Button>
+          )}
+          <Button onClick={onClose}>Cancel</Button>
+          <Button type="submit" form={FORM_ID} variant="primary" loading={busy} disabled={!isNew && !dirty}>
+            {isNew ? "Add transform" : "Save"}
+          </Button>
+        </>
+      }
+    >
       <form
+        id={FORM_ID}
         className="flex flex-col gap-4"
         onSubmit={(e) => {
           e.preventDefault();
           void save();
         }}
       >
-        <Input
-          label="Name"
-          value={name}
-          autoFocus={isNew}
-          placeholder="Make it shorter"
-          onChange={(e) => {
-            setName(e.target.value);
-            setError(null);
-          }}
-        />
-        <Textarea
-          label="What should Claude do?"
-          rows={3}
-          value={instruction}
-          placeholder="Cut this to the essential points without changing the meaning."
-          onChange={(e) => {
-            setInstruction(e.target.value);
-            setError(null);
-          }}
-        />
+        {builtin ? (
+          <p className="text-body text-muted">{initial.instruction}</p>
+        ) : (
+          <>
+            <Input
+              label="Name"
+              value={name}
+              autoFocus={isNew}
+              placeholder="Make it shorter"
+              onChange={(e) => {
+                setName(e.target.value);
+                setError(null);
+              }}
+            />
+            <Textarea
+              label="What should Claude do?"
+              rows={3}
+              value={instruction}
+              placeholder="Cut this to the essential points without changing the meaning."
+              onChange={(e) => {
+                setInstruction(e.target.value);
+                setError(null);
+              }}
+            />
+          </>
+        )}
         <div>
-          <div className="mb-1.5 text-[13px] font-medium text-ink">Shortcut</div>
+          <div className="mb-1.5 text-body-strong text-ink">Shortcut</div>
           <div className="flex items-center gap-3">
             <ShortcutField value={shortcut} onChange={setShortcut} label={name || "New transform"} />
-            {!shortcut && <span className="text-xs text-muted">Optional. Select text anywhere and press it.</span>}
+            {!shortcut && <span className="text-caption text-muted">Optional. Select text anywhere and press it.</span>}
           </div>
         </div>
         {error && (
-          <p role="alert" className="text-[13px] text-danger">
+          <p role="alert" className="text-body text-danger">
             {error}
           </p>
         )}
-        <div className="flex items-center justify-between">
-          <div>
-            {onDelete && (
-              <Button variant="danger" size="sm" icon={<Trash2 size={13} />} onClick={onDelete}>
-                Delete
-              </Button>
-            )}
-          </div>
-          <div className="flex gap-2">
-            {onDiscard && <Button onClick={onDiscard}>Cancel</Button>}
-            <Button type="submit" variant="primary" loading={busy} disabled={!isNew && !dirty}>
-              {isNew ? "Add transform" : "Save"}
-            </Button>
-          </div>
-        </div>
       </form>
-    </Card>
-  );
-}
-
-export function ExplainerCard({ title, chord, children }: { title: string; chord: string[] | undefined; children: string }) {
-  return (
-    <Card className="p-5">
-      <h3 className="text-sm font-semibold text-ink">{title}</h3>
-      <p className="mt-1 text-[13px] leading-relaxed text-muted">{children}</p>
-      <div className="mt-3 flex items-center gap-2 text-xs text-muted">
-        Hold <Chord chord={chord} />
-      </div>
-    </Card>
+    </Modal>
   );
 }
