@@ -162,6 +162,11 @@ export function applyAppearance(next: { theme: ThemePref; accentSource?: AccentS
   render();
 }
 
+/** Change only the theme, keeping the current accent source (used when settings aren't loaded). */
+export function applyTheme(theme: ThemePref): void {
+  applyAppearance({ theme, accentSource: state.accentSource });
+}
+
 /** Apply the last known choice before first paint (no flash). */
 export function applyCachedAppearance(opts: { themeOnly?: boolean } = {}): void {
   themeOnly = opts.themeOnly === true;

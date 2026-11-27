@@ -592,7 +592,7 @@ function startPillDemo(emit: <E extends EventName>(e: E, p: EventMap[E]) => void
     emit("pill://state", { state: cur.state, mode: cur.mode, elapsedMs: shown, message: cur.message, retryable: cur.retryable });
     if (cur.state === "listening" || cur.state === "locked") {
       const t = Date.now() / 220;
-      emit("pill://levels", Array.from({ length: 12 }, (_, i) => Math.max(0.05, Math.min(1, 0.45 + Math.sin(t + i * 0.7) * 0.3 + Math.sin(t * 2.3 + i) * 0.15))));
+      emit("pill://levels", Array.from({ length: 9 }, (_, i) => Math.max(0.05, Math.min(1, 0.45 + Math.sin(t + i * 0.7) * 0.3 + Math.sin(t * 2.3 + i) * 0.15))));
     }
     if (elapsed >= cur.ms) {
       step = (step + 1) % script.length;

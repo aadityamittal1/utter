@@ -1,7 +1,7 @@
 import { useReducer, type ReactNode } from "react";
 import { Copy, Minus, Moon, PanelLeft, Square, Sun, X } from "lucide-react";
 import { useNav, useSettings } from "../lib/store";
-import { applyAppearance } from "../lib/appearance";
+import { applyTheme } from "../lib/appearance";
 import { useMaximized, useResolvedTheme, windowAction, type WindowAction } from "../lib/shell";
 import { cn } from "../lib/cn";
 import { IconButton } from "./ui/Button";
@@ -42,7 +42,7 @@ export function TitleBar({ showSidebarToggle = true }: { showSidebarToggle?: boo
     const theme = dark ? "light" : "dark";
     if (settings) void update({ theme });
     else {
-      applyAppearance({ theme }); // nothing to persist yet: apply directly
+      applyTheme(theme); // nothing to persist yet: apply directly (keeps the accent source)
       rerender();
     }
   };

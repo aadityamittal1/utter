@@ -2,6 +2,9 @@ import type { ReactNode } from "react";
 import { Modal as HeroModal } from "@heroui/react";
 import { cn } from "../../lib/cn";
 
+/** Modal backdrops start below the 48px custom title bar so the window can still be moved and closed. */
+export const TITLEBAR_CLEAR = "top-[48px] h-auto";
+
 export interface ModalProps {
   isOpen: boolean;
   onClose: () => void;
@@ -18,7 +21,7 @@ export interface ModalProps {
 /** Controlled HeroUI dialog: focus trap, Esc, backdrop click and focus return come from React Aria. */
 export function Modal({ isOpen, onClose, title, children, footer, size = "md", className, keyboardDismissDisabled }: ModalProps) {
   return (
-    <HeroModal.Backdrop isOpen={isOpen} onOpenChange={(open) => !open && onClose()} isKeyboardDismissDisabled={keyboardDismissDisabled}>
+    <HeroModal.Backdrop className={TITLEBAR_CLEAR} isOpen={isOpen} onOpenChange={(open) => !open && onClose()} isKeyboardDismissDisabled={keyboardDismissDisabled}>
       <HeroModal.Container size={size}>
         <HeroModal.Dialog className={cn("rounded-card", className)}>
           <HeroModal.CloseTrigger />

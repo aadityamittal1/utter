@@ -4,6 +4,7 @@ import { AudioLines, Info, Laptop, ShieldCheck, SlidersHorizontal, Sparkles } fr
 import { Modal as HeroModal } from "@heroui/react";
 import { ipc } from "../../lib/ipc";
 import { cn } from "../../lib/cn";
+import { TITLEBAR_CLEAR } from "../../components/ui/Modal";
 import { useNav, type SettingsSection } from "../../lib/store";
 import About from "./About";
 import AI from "./AI";
@@ -77,7 +78,7 @@ export default function SettingsDialog() {
   const Active = (ALL.find((i) => i.id === section) ?? ALL[0]).Component;
 
   return (
-    <HeroModal.Backdrop isOpen={open} onOpenChange={(o) => !o && close()}>
+    <HeroModal.Backdrop className={TITLEBAR_CLEAR} isOpen={open} onOpenChange={(o) => !o && close()}>
       <HeroModal.Container>
         <HeroModal.Dialog
           aria-label="Settings"

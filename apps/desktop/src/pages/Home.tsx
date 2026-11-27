@@ -76,6 +76,13 @@ export default function Home() {
   }, []);
   useEffect(load, [load]);
   useBackendEvent("history://changed", load);
+  // Settings is a dialog over Home, so Home never remounts: refresh (e.g. the API key card) when it closes.
+  const settingsOpen = useNav((s) => s.settingsOpen);
+  const wasOpen = useRef(settingsOpen);
+  useEffect(() => {
+    if (wasOpen.current && !settingsOpen) load();
+    wasOpen.current = settingsOpen;
+  }, [settingsOpen, load]);
 
   const dismissBanner = () => {
     setBannerGone(true);
