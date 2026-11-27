@@ -1,40 +1,101 @@
-import { useState } from "react";
-import { Input, Select, SettingRow, Switch } from "../../components/ui";
-import type { ThemePref } from "../../lib/types";
-import { Section, WithSettings } from "./parts";
+import { useEffect, useRef, useState } from "react";
+import { ArrowLeft } from "lucide-react";
+import { Button, Chord, Input, Select, Switch } from "../../components/ui";
+import type { AccentSource, ThemePref } from "../../lib/types";
+import { LANGUAGES } from "./helpers";
+import Microphone from "./Microphone";
+import { Group, RaisedButton, Row, SettingsPage, WithSettings } from "./parts";
+import Shortcuts from "./Shortcuts";
 
 export default function General() {
-  return (
-    <WithSettings>
-      {(s, update) => (
-        <div className="flex flex-col gap-4">
-          <Section title="Profile">
-            <NameRow value={s.userName} onCommit={(userName) => void update({ userName })} />
-          </Section>
-          <Section title="Appearance and behavior">
-            <SettingRow title="Theme" description="Follow Windows, or pick one.">
-              <Select aria-label="Theme" value={s.theme} onChange={(e) => void update({ theme: e.target.value as ThemePref })} className="w-40">
-                <option value="system">System</option>
-                <option value="light">Light</option>
-                <option value="dark">Dark</option>
-              </Select>
-            </SettingRow>
-            <SettingRow title="Launch at login" description="Start Utter in the tray when you sign in to Windows.">
-              <Switch label="Launch at login" checked={s.launchAtLogin} onChange={(launchAtLogin) => void update({ launchAtLogin })} />
-            </SettingRow>
-            <SettingRow title="Sounds" description="A soft tick when recording starts and stops.">
-              <Switch label="Sounds" checked={s.sounds} onChange={(sounds) => void update({ sounds })} />
-            </SettingRow>
-            <SettingRow title="Show pill" description="The small floating indicator while you dictate.">
-              <Switch label="Show pill" checked={s.showPill} onChange={(showPill) => void update({ showPill })} />
-            </SettingRow>
-            <SettingRow title="Keep microphone warm" description="Keeps the mic open so the first word is never clipped. Your PC shows the mic as in use.">
-              <Switch label="Keep microphone warm" checked={s.keepMicWarm} onChange={(keepMicWarm) => void update({ keepMicWarm })} />
-            </SettingRow>
-          </Section>
+  const [view, setView] = useState<"main" | "shortcuts">("main");
+  const backRef = useRef<HTMLButtonElement>(null);
+  const changeRef = useRef<HTMLButtonElement>(null);
+  const moved = useRef(false);
+
+  // Keep keyboard focus with the user across the in-place view swap.
+  useEffect(() => {
+    if (!moved.current) return;
+    (view === "shortcuts" ? backRef : changeRef).current?.focus();
+  }, [view]);
+  const go = (v: "main" | "shortcuts") => {
+    moved.current = true;
+    setView(v);
+  };
+
+  if (view === "shortcuts") {
+    return (
+      <SettingsPage title="Shortcuts">
+        <div className="-mt-4">
+          <Button ref={backRef} variant="ghost" size="sm" icon={<ArrowLeft size={16} strokeWidth={1.5} aria-hidden />} onClick={() => go("main")}>
+            Back to General
+          </Button>
         </div>
-      )}
-    </WithSettings>
+        <Shortcuts />
+      </SettingsPage>
+    );
+  }
+
+  return (
+    <SettingsPage title="General">
+      <WithSettings>
+        {(s, update) => (
+          <>
+            <Group title="Dictation">
+              <Row
+                title="Shortcuts"
+                description={
+                  <span className="inline-flex flex-wrap items-center gap-1.5">
+                    Hold <Chord chord={s.shortcuts.dictate?.[0]} /> and speak.
+                  </span>
+                }
+              >
+                <RaisedButton ref={changeRef} onClick={() => go("shortcuts")}>Change</RaisedButton>
+              </Row>
+            </Group>
+
+            <Microphone />
+
+            <Group title="Language">
+              <Row title="Spoken language" description="Auto-detect works well for most people. Pick one for the best accuracy.">
+                <Select aria-label="Spoken language" value={s.language} onChange={(e) => void update({ language: e.target.value })} className="w-48">
+                  <option value="auto">Auto-detect</option>
+                  {LANGUAGES.map((l) => (
+                    <option key={l.code} value={l.code}>
+                      {l.name}
+                    </option>
+                  ))}
+                </Select>
+              </Row>
+              <Row title="Translate to English" description="Speak in any language and get English text. Needs a multilingual model.">
+                <Switch label="Translate to English" checked={s.translateToEnglish} onChange={(translateToEnglish) => void update({ translateToEnglish })} />
+              </Row>
+            </Group>
+
+            <Group title="Appearance">
+              <Row title="Theme" description="Follow Windows, or pick one.">
+                <Select aria-label="Theme" value={s.theme} onChange={(e) => void update({ theme: e.target.value as ThemePref })} className="w-48">
+                  <option value="system">System</option>
+                  <option value="light">Light</option>
+                  <option value="dark">Dark</option>
+                </Select>
+              </Row>
+              <Row title="Accent color" description="Utter's ember, or the accent color you chose in Windows.">
+                <Select aria-label="Accent color" value={s.accentSource} onChange={(e) => void update({ accentSource: e.target.value as AccentSource })} className="w-48">
+                  <option value="utter">Utter ember</option>
+                  <option value="windows">Windows accent</option>
+                </Select>
+              </Row>
+              <Row title="Text size" description="Follows Windows. Change it under Settings, Accessibility, Text size." />
+            </Group>
+
+            <Group title="Profile">
+              <NameRow value={s.userName} onCommit={(userName) => void update({ userName })} />
+            </Group>
+          </>
+        )}
+      </WithSettings>
+    </SettingsPage>
   );
 }
 
@@ -50,7 +111,7 @@ function NameRow({ value, onCommit }: { value: string; onCommit: (v: string) => 
     if (v !== value) onCommit(v);
   };
   return (
-    <SettingRow title="Your name" description="Used for greetings and signing off emails.">
+    <Row title="Your name" description="Used for greetings and signing off emails.">
       <Input
         aria-label="Your name"
         className="w-56"
@@ -61,6 +122,6 @@ function NameRow({ value, onCommit }: { value: string; onCommit: (v: string) => 
         onBlur={commit}
         onKeyDown={(e) => e.key === "Enter" && e.currentTarget.blur()}
       />
-    </SettingRow>
+    </Row>
   );
 }

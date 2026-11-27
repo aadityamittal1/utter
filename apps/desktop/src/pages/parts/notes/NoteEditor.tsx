@@ -89,15 +89,15 @@ export function NoteEditor({
           value={title}
           onChange={(e) => edit({ title: e.target.value })}
           placeholder="Untitled note"
-          className="min-w-0 flex-1 bg-transparent font-display text-[26px] leading-tight text-ink placeholder:text-faint focus-visible:outline-none"
+          className="min-w-0 flex-1 bg-transparent text-subtitle text-ink placeholder:text-faint focus-visible:outline-none"
         />
-        <span className="flex shrink-0 items-center gap-1 text-xs text-muted" role="status" aria-live="polite">
+        <span className="flex shrink-0 items-center gap-1 text-caption text-muted" role="status" aria-live="polite">
           {status === "saved" && (
             <>
-              <Check size={13} aria-hidden className="text-success" /> Saved
+              <Check size={16} strokeWidth={1.5} aria-hidden className="text-success" /> Saved
             </>
           )}
-          {status === "saving" && "Saving..."}
+          {status === "saving" && "Saving…"}
           {status === "error" && <span className="text-danger">Not saved</span>}
         </span>
         {confirming ? (
@@ -110,7 +110,7 @@ export function NoteEditor({
             </Button>
           </span>
         ) : (
-          <Button size="sm" variant="ghost" icon={<Trash2 size={14} />} onClick={() => setConfirming(true)} aria-label="Delete this note">
+          <Button size="sm" variant="ghost" icon={<Trash2 size={16} strokeWidth={1.5} />} onClick={() => setConfirming(true)} aria-label="Delete this note">
             Delete
           </Button>
         )}
@@ -120,10 +120,10 @@ export function NoteEditor({
         aria-label="Note body"
         value={body}
         onChange={(e) => edit({ body: e.target.value })}
-        placeholder="Start typing, or hold the dictate keys and talk."
-        className="min-h-0 flex-1 resize-none bg-transparent px-6 py-5 text-[15px] leading-[1.7] text-ink placeholder:text-faint focus-visible:outline-none"
+        placeholder="Start typing, or hold the dictate keys and talk"
+        className="min-h-0 flex-1 resize-none bg-transparent px-6 py-5 text-body-lg text-ink placeholder:text-faint focus-visible:outline-none"
       />
-      <div className="flex items-center justify-between border-t border-line px-6 py-2.5 text-xs text-muted">
+      <div className="flex items-center justify-between border-t border-line px-6 py-2.5 text-caption text-muted">
         <span className="flex items-center gap-1.5">
           Hold <Chord chord={formatChord(dictateChord)} /> to dictate here
         </span>

@@ -44,7 +44,7 @@ export function SpeechModel({ next, back, download }: StepProps) {
       }}
     >
       {error && (
-        <p role="alert" className="mb-3 text-sm text-danger">
+        <p role="alert" className="mb-3 text-body text-danger">
           {error}
         </p>
       )}
@@ -68,13 +68,13 @@ export function SpeechModel({ next, back, download }: StepProps) {
                 {on && <span className="size-2 rounded-full bg-ember" />}
               </span>
               <span className="flex-1">
-                <span className="text-sm font-medium text-ink">{m.label}</span>
-                {m.recommended && <span className="ml-2 rounded-full bg-highlight-soft px-2 py-0.5 text-[11px] font-medium text-highlight">Recommended</span>}
-                <span className="block text-xs text-muted">
+                <span className="text-body font-medium text-ink">{m.label}</span>
+                {m.recommended && <span className="ml-2 rounded-full bg-ember-soft px-2 py-0.5 text-caption font-medium text-ember-text">Recommended</span>}
+                <span className="block text-caption text-muted">
                   {formatBytes(m.sizeBytes)} · {m.multilingual ? "Many languages" : "English"}
                 </span>
               </span>
-              {m.downloaded && <CheckCircle2 size={16} className="text-success" aria-label="Downloaded" />}
+              {m.downloaded && <CheckCircle2 size={16} strokeWidth={1.5} className="text-success" aria-label="Downloaded" />}
             </button>
           );
         })}
@@ -83,8 +83,8 @@ export function SpeechModel({ next, back, download }: StepProps) {
 
       <div className="mt-5 min-h-12">
         {starting && (
-          <p className="flex items-center gap-2 text-sm text-muted" role="status">
-            <Loader2 size={14} className="animate-spin" aria-hidden /> Starting…
+          <p className="flex items-center gap-2 text-body text-muted" role="status">
+            <Loader2 size={16} strokeWidth={1.5} className="animate-spin" aria-hidden /> Starting…
           </p>
         )}
         {downloading && (
@@ -92,13 +92,13 @@ export function SpeechModel({ next, back, download }: StepProps) {
             <div className="h-1.5 overflow-hidden rounded-full bg-muted-surface" role="progressbar" aria-valuenow={pct} aria-valuemin={0} aria-valuemax={100} aria-label="Model download">
               <div className="h-full rounded-full bg-ember transition-[width] duration-200" style={{ width: `${pct}%` }} />
             </div>
-            <p className="mt-2 text-xs text-muted">
+            <p className="mt-2 text-caption text-muted">
               Downloading {pct}% of {formatBytes(p!.total)}. You can keep going.
             </p>
           </div>
         )}
         {download.error && started && (
-          <p role="alert" className="text-sm text-danger">
+          <p role="alert" className="text-body text-danger">
             {download.error}{" "}
             <button type="button" className="font-medium underline" onClick={() => void download.start(selected!)}>
               Try again
@@ -106,12 +106,12 @@ export function SpeechModel({ next, back, download }: StepProps) {
           </p>
         )}
         {ready && !busyDownload && (
-          <p className="flex items-center gap-2 text-sm text-success" role="status">
-            <CheckCircle2 size={15} aria-hidden /> Ready on this PC.
+          <p className="flex items-center gap-2 text-body text-success" role="status">
+            <CheckCircle2 size={16} strokeWidth={1.5} aria-hidden /> Ready on this PC.
           </p>
         )}
         {current && !ready && !started && (
-          <Button variant="secondary" icon={<Download size={15} aria-hidden />} onClick={() => void download.start(current.id)}>
+          <Button variant="secondary" icon={<Download size={16} strokeWidth={1.5} aria-hidden />} onClick={() => void download.start(current.id)}>
             Download {formatBytes(current.sizeBytes)}
           </Button>
         )}

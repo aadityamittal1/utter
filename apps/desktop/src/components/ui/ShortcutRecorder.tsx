@@ -73,10 +73,19 @@ export function ShortcutRecorder({
       })();
       // Always release the global capture, however recording ends (including unmount).
       cleanups.push(() => void ipc.stopShortcutCapture().catch(() => undefined));
+      // Esc cancels recording without also closing a dialog the recorder sits in.
+      const guard = (e: KeyboardEvent) => {
+        if (e.key !== "Escape") return;
+        e.stopPropagation();
+        setRecording(false);
+      };
+      window.addEventListener("keydown", guard, { capture: true });
+      cleanups.push(() => window.removeEventListener("keydown", guard, { capture: true }));
     } else {
       let held: string[] = [];
       const down = (e: KeyboardEvent) => {
         e.preventDefault();
+        e.stopPropagation();
         if (e.key === "Escape") return setRecording(false);
         const name = keyName(e.key);
         if (!held.includes(name)) held = [...held, name];
@@ -93,10 +102,10 @@ export function ShortcutRecorder({
           setRecording(false);
         }
       };
-      window.addEventListener("keydown", down);
+      window.addEventListener("keydown", down, { capture: true });
       window.addEventListener("keyup", up);
       cleanups.push(
-        () => window.removeEventListener("keydown", down),
+        () => window.removeEventListener("keydown", down, { capture: true }),
         () => window.removeEventListener("keyup", up),
       );
     }

@@ -103,9 +103,16 @@ export const useSettings = create<SettingsStore>((set) => {
   };
 });
 
+/** Sections of the Settings dialog. */
+export const SETTINGS_SECTIONS = ["general", "system", "ai", "speech", "privacy", "about"] as const;
+export type SettingsSection = (typeof SETTINGS_SECTIONS)[number];
+
+const asSection = (s: string | undefined): SettingsSection => ((SETTINGS_SECTIONS as readonly string[]).includes(s ?? "") ? (s as SettingsSection) : "general");
+
+/** Settings is a dialog, never a routed page: a "#settings" hash lands on Home. */
 function pageFromHash(): Page {
   const h = typeof location === "undefined" ? "" : location.hash.replace(/^#\/?/, "");
-  return (PAGES as string[]).includes(h) ? (h as Page) : "home";
+  return h !== "settings" && (PAGES as string[]).includes(h) ? (h as Page) : "home";
 }
 
 const SIDEBAR_KEY = "utter.sidebarCollapsed";
@@ -113,16 +120,32 @@ const SIDEBAR_KEY = "utter.sidebarCollapsed";
 interface NavStore {
   page: Page;
   navigate: (page: Page) => void;
-  /** Open Settings, optionally at a section. Today this navigates to the settings page; the Settings dialog replaces it. */
+  /** Open the Settings dialog, optionally at a section. */
   openSettings: (section?: string) => void;
+  closeSettings: () => void;
+  setSettingsSection: (section: SettingsSection) => void;
+  settingsOpen: boolean;
+  settingsSection: SettingsSection;
   sidebarCollapsed: boolean;
   toggleSidebar: () => void;
+}
+
+/** A "#settings" link on first load opens the dialog; the hash then goes back to the page. */
+const bootsIntoSettings = typeof location !== "undefined" && location.hash.replace(/^#\/?/, "") === "settings";
+if (bootsIntoSettings) {
+  try {
+    history.replaceState(null, "", "#home");
+  } catch {
+    /* ignore */
+  }
 }
 
 /** Current page. Mirrored in the URL hash so reloads and deep links keep their place. */
 export const useNav = create<NavStore>((set, get) => ({
   page: pageFromHash(),
   navigate: (page) => {
+    // Anything that used to route to the settings page (tray, Home, hub://navigate) opens the dialog.
+    if (page === "settings") return get().openSettings();
     set({ page });
     try {
       history.replaceState(null, "", `#${page}`);
@@ -130,7 +153,15 @@ export const useNav = create<NavStore>((set, get) => ({
       /* ignore */
     }
   },
-  openSettings: () => get().navigate("settings"),
+  settingsOpen: bootsIntoSettings,
+  settingsSection: "general",
+  openSettings: (section) => {
+    // Nothing opens over the onboarding flow.
+    if (useSettings.getState().settings?.onboarded === false) return;
+    set({ settingsOpen: true, settingsSection: asSection(section) });
+  },
+  closeSettings: () => set({ settingsOpen: false }),
+  setSettingsSection: (settingsSection) => set({ settingsSection }),
   sidebarCollapsed: (() => {
     try {
       return localStorage.getItem(SIDEBAR_KEY) === "1";
@@ -149,14 +180,26 @@ export const useNav = create<NavStore>((set, get) => ({
   },
 }));
 
+/** hub://navigate: a page name, where "settings" opens the dialog. */
+export function handleHubNavigate(page: string): void {
+  if ((PAGES as string[]).includes(page)) useNav.getState().navigate(page as Page);
+}
+
 /** Wire backend events and the URL hash into the stores. Call once in the shell. */
 export function useStoreListeners(): void {
   useBackendEvent("settings://changed", (s) => useSettings.getState().replace(s));
-  useBackendEvent("hub://navigate", ({ page }) => {
-    if ((PAGES as string[]).includes(page)) useNav.getState().navigate(page as Page);
-  });
+  useBackendEvent("hub://navigate", ({ page }) => handleHubNavigate(page));
   useEffect(() => {
-    const onHash = () => useNav.setState({ page: pageFromHash() });
+    const onHash = () => {
+      if (location.hash.replace(/^#\/?/, "") === "settings") {
+        useNav.getState().openSettings();
+        try {
+          history.replaceState(null, "", `#${useNav.getState().page}`);
+        } catch {
+          /* ignore */
+        }
+      } else useNav.setState({ page: pageFromHash() });
+    };
     window.addEventListener("hashchange", onHash);
     return () => window.removeEventListener("hashchange", onHash);
   }, []);

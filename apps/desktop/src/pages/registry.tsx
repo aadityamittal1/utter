@@ -8,10 +8,9 @@ import Styles from "./Styles";
 import Transforms from "./Transforms";
 import Notes from "./Notes";
 import Insights from "./Insights";
-import Settings from "./settings/Settings";
 
-/** Later tasks replace the page files; this map stays stable. */
-export const PAGE_COMPONENTS: Record<Page, ComponentType> = {
+/** Routed pages. Settings is a dialog (SettingsDialog), not an entry here. */
+export const PAGE_COMPONENTS: Record<Exclude<Page, "settings">, ComponentType> = {
   home: Home,
   history: History,
   dictionary: Dictionary,
@@ -20,5 +19,4 @@ export const PAGE_COMPONENTS: Record<Page, ComponentType> = {
   transforms: Transforms,
   notes: Notes,
   insights: Insights,
-  settings: Settings,
 };
