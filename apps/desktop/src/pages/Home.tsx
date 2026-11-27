@@ -93,7 +93,7 @@ export default function Home() {
       <h1 className="pb-6 text-title text-ink">{homeTitle(settings?.userName)}</h1>
 
       <div className="@container">
-      <div className="grid items-start gap-6 @min-[860px]:grid-cols-[minmax(0,1fr)_280px]">
+      <div className="grid items-start gap-6 @min-[720px]:grid-cols-[minmax(0,1fr)_280px]">
         <div className="flex min-w-0 flex-col gap-8">
           {key && !key.set && (
             <div className="flex items-center gap-4 rounded-card border border-line bg-muted-surface px-5 py-4">
@@ -111,7 +111,7 @@ export default function Home() {
           {!bannerGone && (
             <Banner
               title="Rewrite text anywhere"
-              art={<EmberWaveform />}
+              backdrop={<EmberWaveform />}
               onDismiss={dismissBanner}
               actions={
                 <Button className={BANNER_BUTTON} onClick={() => navigate("transforms")}>

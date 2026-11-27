@@ -1,6 +1,6 @@
 import { useMemo, useState } from "react";
 import { ArrowRight, BookA, Download, Pencil, Sparkles, Trash2 } from "lucide-react";
-import { Button, EmptyState, IconButton, PageHeader, SkeletonRows, Tooltip } from "../components/ui";
+import { Button, EmptyState, IconButton, PageHeader, SkeletonRows } from "../components/ui";
 import { ipc } from "../lib/ipc";
 import { toast } from "../lib/store";
 import type { DictEntry } from "../lib/types";
@@ -135,12 +135,10 @@ export default function Dictionary() {
                 )}
                 <span className="truncate">{d.word}</span>
                 {d.auto && (
-                  <Tooltip delay={300}>
-                    <span tabIndex={0} role="img" aria-label="Learned from your edits" className="shrink-0 rounded text-faint">
-                      <Sparkles size={16} strokeWidth={1.5} aria-hidden />
-                    </span>
-                    <Tooltip.Content>Learned from your edits</Tooltip.Content>
-                  </Tooltip>
+                  <span title="Learned from your edits" className="shrink-0 text-faint">
+                    <Sparkles size={16} strokeWidth={1.5} aria-hidden />
+                    <span className="sr-only">Learned from your edits</span>
+                  </span>
                 )}
               </div>
             </ListRow>

@@ -1,6 +1,6 @@
 import { describe, expect, it } from "vitest";
 import type { HistoryItem } from "../../../lib/types";
-import { dayLabel, groupByDay } from "./group";
+import { clockLabel, dayLabel, groupByDay } from "./group";
 
 const NOW = new Date(2026, 10, 26, 15, 0, 0).getTime(); // Thu Nov 26 2026, 3pm local
 
@@ -53,5 +53,12 @@ describe("groupByDay", () => {
   });
   it("returns nothing for no items", () => {
     expect(groupByDay([], NOW)).toEqual([]);
+  });
+});
+
+describe("clockLabel", () => {
+  it("drops the space and lowercases, keeping every digit and letter", () => {
+    expect(clockLabel(new Date(2026, 10, 26, 14, 35).getTime())).toMatch(/^2:35pm$/);
+    expect(clockLabel(new Date(2026, 10, 26, 9, 5).getTime())).toMatch(/^9:05am$/);
   });
 });

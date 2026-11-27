@@ -110,7 +110,11 @@ export function ShortcutRecorder({
     <button
       type="button"
       aria-label={`${label} shortcut. Press to change.`}
-      onClick={() => setRecording((r) => !r)}
+      onClick={() => {
+        // Tell the parent right away (not from an effect), so an Esc pressed immediately after cannot slip through.
+        recordingCb.current?.(!recording);
+        setRecording(!recording);
+      }}
       onBlur={() => setRecording(false)}
       className={cn(
         "inline-flex h-10 min-w-[150px] items-center justify-between gap-3 rounded-control border bg-surface px-3 transition-colors duration-[167ms] ease-fluent",

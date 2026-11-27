@@ -284,6 +284,11 @@
   outline: 1px solid var(--text-faint);
   outline-offset: -1px;
 }
+.radio:not([data-selected="true"]) .radio__control {
+  /* 3:1 boundary for the empty circle */
+  outline: 1px solid var(--text-faint);
+  outline-offset: -1px;
+}
 .switch__thumb {
   box-shadow: 0 1px 2px rgb(26 24 20 / 0.2);
 }

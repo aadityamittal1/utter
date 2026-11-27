@@ -44,7 +44,7 @@ export default function Styles() {
         {def.categories.length > 1 && (
           <RadioGroup aria-label="Other app types" orientation="horizontal" value={otherCat} onChange={(v) => setOtherCat(v as Category)} className="flex-wrap gap-x-6 gap-y-2">
             {def.categories.map((c) => (
-              <Radio key={c} value={c}>
+              <Radio key={c} value={c} className="flex-row items-center gap-2">
                 <Radio.Control>
                   <Radio.Indicator />
                 </Radio.Control>
@@ -95,7 +95,7 @@ export default function Styles() {
           <SettingRow title="Cleanup" description={current?.help}>
             <RadioGroup aria-label="Cleanup level" orientation="horizontal" value={settings.cleanupLevel} onChange={(v) => void update({ cleanupLevel: v as CleanupLevel })} className="gap-x-5">
               {CLEANUP.map((c) => (
-                <Radio key={c.value} value={c.value}>
+                <Radio key={c.value} value={c.value} className="flex-row items-center gap-2">
                   <Radio.Control>
                     <Radio.Indicator />
                   </Radio.Control>

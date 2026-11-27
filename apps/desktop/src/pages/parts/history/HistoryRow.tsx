@@ -2,12 +2,12 @@ import { useEffect, useMemo, useRef, useState } from "react";
 import { Copy, CornerDownLeft, Ellipsis, FileDiff, Pencil, Play, Plus, RotateCw, Sparkles, Square, Trash2, X } from "lucide-react";
 import { ipc } from "../../../lib/ipc";
 import { cn } from "../../../lib/cn";
-import { formatTime } from "../../../lib/format";
 import { toast } from "../../../lib/store";
 import type { HistoryItem } from "../../../lib/types";
 import { Button, Dropdown, IconButton, Label, Spinner, Textarea } from "../../../components/ui";
 import { MenuIconButton } from "./MenuIconButton";
 import { CATEGORY_LABEL } from "./shared";
+import { clockLabel } from "./group";
 import { wordDiff } from "./diff";
 import { playClip } from "./player";
 
@@ -129,7 +129,7 @@ export function HistoryRow({ item, onChanged }: { item: HistoryItem; onChanged: 
     <li className="group px-5 py-4 transition-colors duration-[var(--dur-fast)] ease-fluent hover:bg-row-hover focus-within:bg-row-hover">
       <div className="flex items-start">
         <time dateTime={new Date(item.createdAt).toISOString()} className="w-20 shrink-0 pt-0.5 text-caption tabular-nums text-faint">
-          {formatTime(item.createdAt).replace(/s/g, "").toLowerCase()}
+          {clockLabel(item.createdAt)}
         </time>
         <div className="min-w-0 flex-1">
           {editing ? (

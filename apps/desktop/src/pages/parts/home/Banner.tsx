@@ -16,7 +16,7 @@ const WAVE_BARS = Array.from({ length: 21 }, (_, i) => {
 
 export function EmberWaveform({ className }: { className?: string }) {
   return (
-    <svg viewBox="0 0 252 100" className={cn("h-20 w-auto", className)} aria-hidden>
+    <svg viewBox="0 0 252 100" className={cn("h-16 w-auto", className)} aria-hidden>
       {WAVE_BARS.map((h, i) => (
         <rect key={i} x={i * 12 + 1} y={50 - h / 2} width={6} height={h} rx={3} className={i % 5 === 2 ? "fill-ember" : "fill-ember/70"} />
       ))}
@@ -27,7 +27,7 @@ export function EmberWaveform({ className }: { className?: string }) {
 /** Lines of text being rewritten: the grey draft becomes the ember result. Decorative. */
 export function RewriteLines({ className }: { className?: string }) {
   return (
-    <svg viewBox="0 0 240 112" className={cn("h-16 w-auto", className)} aria-hidden>
+    <svg viewBox="0 0 240 112" className={cn("h-14 w-auto", className)} aria-hidden>
       <rect x={0} y={8} width={150} height={8} rx={4} className="fill-on-banner/25" />
       <rect x={0} y={28} width={196} height={8} rx={4} className="fill-on-banner/25" />
       <rect x={0} y={48} width={118} height={8} rx={4} className="fill-on-banner/25" />
@@ -47,13 +47,17 @@ export function Banner({
   children,
   actions,
   art,
+  backdrop,
   onDismiss,
   className,
 }: {
   title: ReactNode;
   children?: ReactNode;
   actions?: ReactNode;
+  /** Informative content shown beside the copy (hidden when the banner is narrow). */
   art?: ReactNode;
+  /** Purely decorative artwork drawn faintly behind the copy; never takes layout space. */
+  backdrop?: ReactNode;
   onDismiss?: () => void;
   className?: string;
 }) {
@@ -64,12 +68,17 @@ export function Banner({
         className,
       )}
     >
-      <div className="min-w-0 flex-1">
+      {backdrop && (
+        <div aria-hidden className="pointer-events-none absolute inset-y-0 right-0 hidden w-3/5 items-center justify-end pr-44 opacity-50 [mask-image:linear-gradient(to_right,transparent,black_45%)] @[400px]:flex">
+          {backdrop}
+        </div>
+      )}
+      <div className="relative min-w-0 flex-1">
         <h2 className="text-serif-heading text-on-banner">{title}</h2>
         {children && <p className="mt-1 text-body text-on-banner-muted">{children}</p>}
       </div>
       {art && <div className="hidden shrink-0 @[620px]:block">{art}</div>}
-      {actions && <div className="flex shrink-0 flex-wrap items-center gap-2">{actions}</div>}
+      {actions && <div className="relative flex shrink-0 flex-wrap items-center gap-2">{actions}</div>}
       {onDismiss && (
         <IconButton label="Dismiss" onClick={onDismiss} className="absolute right-2 top-2 text-on-banner-muted hover:bg-on-banner/10 hover:text-on-banner">
           <X size={16} strokeWidth={1.5} />

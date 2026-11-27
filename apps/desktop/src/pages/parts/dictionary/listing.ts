@@ -7,6 +7,8 @@ export type DictTab = "all" | "replacements" | "words";
 export function idNum(id: string): number {
   const tail = id.split("_").pop() ?? "";
   if (/^\d+$/.test(tail)) return parseInt(tail, 10);
+  // Not plain digits: the browser mock mints ids like "d_1a" in base 36. The real backend always
+  // sends decimal rowids, so this branch only keeps the demo data ordered.
   const n = parseInt(tail, 36);
   return Number.isNaN(n) ? 0 : n;
 }

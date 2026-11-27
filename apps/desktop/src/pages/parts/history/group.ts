@@ -1,3 +1,4 @@
+import { formatTime } from "../../../lib/format";
 import type { HistoryItem } from "../../../lib/types";
 
 export interface DayGroup {
@@ -35,4 +36,9 @@ export function groupByDay(items: HistoryItem[], now: number = Date.now()): DayG
     else groups.push({ key, label: dayLabel(it.createdAt, now), items: [it] });
   }
   return groups;
+}
+
+/** Compact clock for the time column: "2:35pm" (no space, lowercase). */
+export function clockLabel(ms: number): string {
+  return formatTime(ms).replace(/s/g, "").toLowerCase();
 }

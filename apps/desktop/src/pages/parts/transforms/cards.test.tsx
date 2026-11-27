@@ -48,4 +48,17 @@ describe("TransformModal", () => {
     await act(async () => buttonByText("Cancel")!.click());
     expect(onClose).toHaveBeenCalled();
   });
+
+  it("Esc right after starting a shortcut recording does not close the dialog", async () => {
+    const onClose = vi.fn();
+    ({ unmount } = mount(<TransformModal initial={{ id: "tf_x", name: "X", instruction: "Do x." }} onClose={onClose} onSaved={vi.fn()} />));
+    await flush();
+    const rec = dialog()!.querySelector<HTMLButtonElement>("button[aria-label*=\"shortcut\"]")!;
+    await act(async () => rec.click());
+    await act(async () => {
+      rec.dispatchEvent(new KeyboardEvent("keydown", { key: "Escape", bubbles: true }));
+    });
+    expect(onClose).not.toHaveBeenCalled();
+    expect(dialog()).not.toBeNull();
+  });
 });

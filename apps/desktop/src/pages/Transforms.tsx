@@ -67,7 +67,7 @@ export default function Transforms() {
       <div className="flex flex-col gap-6">
         <Banner
           title="Rewrite text in place"
-          art={<RewriteLines />}
+          backdrop={<RewriteLines />}
           actions={
             <Button className={BANNER_BUTTON} onClick={create} disabled={full}>
               Create a transform
