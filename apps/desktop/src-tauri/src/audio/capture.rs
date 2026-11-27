@@ -19,8 +19,14 @@ use super::dsp;
 
 const PREROLL_MS: usize = 300;
 const LEVEL_TICK: Duration = Duration::from_millis(33);
-const LEVEL_WINDOW_SAMPLES: usize = 960; // 60 ms at 16 kHz
-const LEVEL_BARS: usize = 12;
+const LEVEL_WINDOW_SAMPLES: usize = 528; // last 33 ms at 16 kHz
+const LEVEL_BARS: usize = 9;
+
+/// How long to wait for the next command so level emits land every `LEVEL_TICK` (~30 Hz)
+/// even when commands keep arriving in between.
+fn level_wait(since_last_emit: Duration) -> Duration {
+    LEVEL_TICK.saturating_sub(since_last_emit)
+}
 
 type LevelSink = Box<dyn Fn(Vec<f32>) + Send>;
 
@@ -150,7 +156,7 @@ impl Recorder {
         self.request(Cmd::Stop).unwrap_or_default()
     }
 
-    /// Called ~30x/s with 12 level bars (0..1) while recording.
+    /// Called ~30x/s with 9 level bars (0..1) while recording.
     pub fn set_level_sink(&self, f: Box<dyn Fn(Vec<f32>) + Send>) {
         let _ = lock(&self.tx).send(Cmd::Sink(f));
     }
@@ -291,7 +297,7 @@ fn worker(device: Option<String>, keep_warm: bool, rx: Receiver<Cmd>, tx: Sender
     loop {
         // Block indefinitely unless recording (then wake for level ticks).
         let cmd = if w.engine.recording() {
-            match rx.recv_timeout(LEVEL_TICK) {
+            match rx.recv_timeout(level_wait(last_emit.elapsed())) {
                 Ok(c) => Some(c),
                 Err(RecvTimeoutError::Timeout) => None,
                 Err(RecvTimeoutError::Disconnected) => break,
@@ -393,6 +399,16 @@ where
 
 #[cfg(test)]
 mod tests {
+    #[test]
+    fn level_wait_counts_down_to_the_next_tick() {
+        assert_eq!(level_wait(Duration::ZERO), LEVEL_TICK);
+        assert_eq!(
+            level_wait(Duration::from_millis(30)),
+            Duration::from_millis(3)
+        );
+        assert_eq!(level_wait(Duration::from_millis(500)), Duration::ZERO);
+    }
+
     use super::*;
 
     #[test]
@@ -470,7 +486,7 @@ mod tests {
         let n = std::sync::Arc::new(std::sync::atomic::AtomicUsize::new(0));
         let n2 = n.clone();
         rec.set_level_sink(Box::new(move |b| {
-            assert_eq!(b.len(), 12);
+            assert_eq!(b.len(), 9);
             n2.fetch_add(1, std::sync::atomic::Ordering::SeqCst);
             panic!("sink panics must not kill the audio thread");
         }));

@@ -230,8 +230,15 @@ impl AppState {
         let kind = st.state;
         let gen = self.pill_gen.fetch_add(1, Ordering::SeqCst) + 1;
         // The mutex is released before any Tauri call below (never held across getters).
-        {
-            *self.pill.lock() = st.clone();
+        let old_kind = {
+            let mut cur = self.pill.lock();
+            let old = cur.state;
+            *cur = st.clone();
+            old
+        };
+        // A pill state change closes the right-click menu; plain resyncs must not.
+        if old_kind != kind {
+            crate::windows::MENU_OPEN.store(false, Ordering::Relaxed);
         }
         self.emit("pill://state", st.clone());
         crate::windows::sync_pill(&self.app, &st, self.pill_allowed());

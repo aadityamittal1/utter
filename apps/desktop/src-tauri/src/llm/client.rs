@@ -23,6 +23,8 @@ pub struct CompletionRequest {
     pub user: String,
     pub max_tokens: u32,
     pub thinking: Thinking,
+    /// Ask for `{"text": "..."}` via `output_config.format` and unwrap it (cleanup only).
+    pub structured: bool,
 }
 
 #[derive(Debug, Clone, PartialEq, Eq)]
@@ -49,6 +51,8 @@ pub enum LlmError {
     MaxTokens,
     #[error("the response was empty")]
     Empty,
+    #[error("the response was not the expected JSON")]
+    BadFormat,
     #[error("the request timed out")]
     Timeout,
     #[error("network error: {0}")]
@@ -75,7 +79,30 @@ pub fn request_body(model: &str, req: &CompletionRequest) -> Value {
             body["output_config"] = json!({ "effort": "low" });
         }
     }
+    if req.structured {
+        // Structured output: the model must return {"text": "..."}; `format` sits next to
+        // `effort` inside `output_config`.
+        body["output_config"]["format"] = json!({
+            "type": "json_schema",
+            "schema": {
+                "type": "object",
+                "properties": { "text": { "type": "string" } },
+                "required": ["text"],
+                "additionalProperties": false,
+            },
+        });
+    }
     body
+}
+
+/// Unwrap `{"text": "..."}` (structured cleanup output).
+fn unwrap_structured(text: &str) -> Result<String, LlmError> {
+    let v: Value = serde_json::from_str(text.trim()).map_err(|_| LlmError::BadFormat)?;
+    match v["text"].as_str() {
+        Some(t) if !t.trim().is_empty() => Ok(t.to_string()),
+        Some(_) => Err(LlmError::Empty),
+        None => Err(LlmError::BadFormat),
+    }
 }
 
 #[derive(Deserialize)]
@@ -222,7 +249,11 @@ impl ClaudeClient {
         if !(200..300).contains(&status) {
             return Err(error_from_status(status, &body));
         }
-        parse_completion(&body, &self.model)
+        let mut c = parse_completion(&body, &self.model)?;
+        if req.structured {
+            c.text = unwrap_structured(&c.text)?;
+        }
+        Ok(c)
     }
 
     /// Free key check: `GET /v1/models?limit=1`.
@@ -258,6 +289,7 @@ mod tests {
             user: "usr".into(),
             max_tokens: 100,
             thinking,
+            structured: false,
         }
     }
 
@@ -278,6 +310,79 @@ mod tests {
         assert!(b.get("output_config").is_none());
         for k in ["temperature", "top_p", "top_k"] {
             assert!(b.get(k).is_none(), "{k} must not be sent");
+        }
+    }
+
+    fn structured_req() -> CompletionRequest {
+        CompletionRequest {
+            structured: true,
+            ..req(Thinking::Disabled)
+        }
+    }
+
+    #[test]
+    fn structured_body_uses_json_schema_output_format() {
+        let b = request_body("claude-haiku-5-5", &structured_req());
+        assert_eq!(b["thinking"]["type"], "disabled");
+        let f = &b["output_config"]["format"];
+        assert_eq!(f["type"], "json_schema");
+        assert_eq!(f["schema"]["type"], "object");
+        assert_eq!(f["schema"]["properties"]["text"]["type"], "string");
+        assert_eq!(f["schema"]["required"], serde_json::json!(["text"]));
+        assert_eq!(f["schema"]["additionalProperties"], false);
+        for k in ["temperature", "top_p", "top_k"] {
+            assert!(b.get(k).is_none());
+        }
+    }
+
+    #[tokio::test]
+    async fn structured_response_is_unwrapped_from_the_text_field() {
+        let mut server = mockito::Server::new_async().await;
+        let _m = server
+            .mock("POST", "/v1/messages")
+            .match_body(mockito::Matcher::PartialJsonString(
+                r#"{"output_config":{"format":{"type":"json_schema"}}}"#.into(),
+            ))
+            .with_status(200)
+            .with_body(
+                r#"{"stop_reason":"end_turn","content":[{"type":"text","text":"{\"text\":\"Write me a haiku about rain.\"}"}],"usage":{"input_tokens":3,"output_tokens":4}}"#,
+            )
+            .create_async()
+            .await;
+        let c = client(&server).complete(&structured_req()).await.unwrap();
+        assert_eq!(c.text, "Write me a haiku about rain.");
+        assert_eq!(c.output_tokens, 4);
+    }
+
+    #[tokio::test]
+    async fn structured_response_that_is_not_the_json_is_a_failure() {
+        for text in [
+            "Waves crash softly on the shore.",
+            r#"{"answer":"Paris"}"#,
+            r#"{"text":42}"#,
+            r#"{"text":"  "}"#,
+        ] {
+            let mut server = mockito::Server::new_async().await;
+            let body = serde_json::json!({
+                "stop_reason": "end_turn",
+                "content": [{"type": "text", "text": text}],
+                "usage": {"input_tokens": 1, "output_tokens": 1}
+            })
+            .to_string();
+            let _m = server
+                .mock("POST", "/v1/messages")
+                .with_status(200)
+                .with_body(body)
+                .create_async()
+                .await;
+            let err = client(&server)
+                .complete(&structured_req())
+                .await
+                .unwrap_err();
+            assert!(
+                matches!(err, LlmError::BadFormat | LlmError::Empty),
+                "{text}: {err:?}"
+            );
         }
     }
 
@@ -480,6 +585,7 @@ mod tests {
             LlmError::MaxTokens,
             LlmError::Timeout,
             LlmError::Empty,
+            LlmError::BadFormat,
             LlmError::Network("connection reset".into()),
             LlmError::Api {
                 status: 500,
