@@ -15,7 +15,7 @@ Speech recognition runs on your PC with Whisper. Cleanup and rewriting use Claud
 ## Features
 
 - **Dictation**: hold the shortcut, speak, release. Text is inserted once, in the focused app. **Hands-free** mode locks recording on (double-tap the shortcut or press `Ctrl+Win+Space`); `Esc` cancels.
-- **The pill**: a small floating bar that shows listening, thinking, done and error states with live level bars. It never takes focus and can be hidden.
+- **The pill**: a small bar pinned bottom-centre above the taskbar on the monitor you're using, always on top of other windows. Hover it to see your shortcut, click it to dictate hands-free, and watch a live waveform while you speak. It never takes focus, stays out of the way of fullscreen apps when idle, and can be shown only while dictating or hidden for an hour.
 - **AI cleanup**: three levels (Off, Light, Medium). Removes fillers, fixes punctuation and grammar, and handles **backtrack**: "coffee at 2, actually 3" becomes "Coffee at 3." Spoken punctuation and numbered lists work too.
 - **Context-aware styles**: Utter notices the app you are in (email, work chat, personal chat, AI prompt, code, document) and applies a style per category: Formal, Casual, Very casual or Excited. Rules are editable.
 - **Dictionary**: names and jargon are kept exactly, and you can add replacements ("clawed" becomes "Claude"). Edit a result in History and Utter suggests the words it should learn.
@@ -35,7 +35,8 @@ Speech recognition runs on your PC with Whisper. Cleanup and rewriting use Claud
 |---|---|
 | ![Home](docs/screenshots/home.png) | ![The pill](docs/screenshots/pill.png) |
 | ![Snippets](docs/screenshots/snippets.png) | ![Styles](docs/screenshots/styles.png) |
-| ![Insights](docs/screenshots/insights.png) | ![Onboarding](docs/screenshots/onboarding.png) |
+| ![Insights](docs/screenshots/insights.png) | ![Settings](docs/screenshots/settings.png) |
+| ![Onboarding](docs/screenshots/onboarding.png) | |
 
 ## Install
 
@@ -98,6 +99,7 @@ npm run tauri dev
 - macOS
 - Code signing (to remove the SmartScreen warning)
 - Auto-updater
+- Snap Layouts flyout when hovering the maximise button (Win+Z opens Snap Layouts today)
 - GPU (Vulkan) acceleration for speech recognition
 - More languages in the UI
 
@@ -108,7 +110,8 @@ Ideas and bugs are welcome: see [CONTRIBUTING.md](CONTRIBUTING.md).
 - Speech recognition: [whisper.cpp](https://github.com/ggml-org/whisper.cpp) (MIT) via whisper-rs
 - App framework: [Tauri](https://tauri.app)
 - AI cleanup: Claude Haiku via your own Anthropic API key
-- Fonts: Inter, Instrument Serif, JetBrains Mono (open licenses)
+- UI components: [HeroUI](https://heroui.com) v3 (MIT), built on React Aria
+- Fonts: Segoe UI Variable (the Windows system font) and Instrument Serif (SIL Open Font License)
 
 ## License
 

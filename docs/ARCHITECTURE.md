@@ -10,7 +10,8 @@ Utter is a Tauri v2 app: a Rust core (`apps/desktop/src-tauri`) and a React + Ty
 |---|---|
 | `lib.rs`, `main.rs`, `app_state.rs` | App setup, plugins, shared state |
 | `commands.rs`, `commands_data.rs` | Tauri commands (the IPC surface): settings, API key, models, audio, shortcuts in `commands.rs`; history, dictionary, snippets, transforms, notes and stats in `commands_data.rs` |
-| `tray.rs`, `windows.rs` | Tray menu; hub and pill window creation |
+| `tray.rs`, `windows.rs`, `pill_windows.rs` | Tray menu; hub and pill windows. The pill is driven natively (non-activating tool window, click-through outside the capsule) and a keeper thread re-raises it on every foreground change, follows the cursor's monitor and hides it under fullscreen apps when idle |
+| `system.rs`, `system_windows.rs` | Windows accent colour and text scale (UISettings), pushed to the UI as events |
 | `hotkeys/` | `action` (the `Action` type and its string form, e.g. `transform:<id>`), global low-level keyboard hook (`hook_windows`), chord parsing (`chord`), and the matcher (`matcher`) for hold, double-tap and chord collisions. Pure matcher is unit-tested |
 | `audio/` | `cpal` capture, resample to 16 kHz mono, pre-roll buffer, RMS levels for the pill, gain normalization (`dsp`), WAV writing |
 | `stt/` | whisper.cpp engine wrapper (`engine`), model catalog (`catalog`), resumable verified downloads (`download`) |
@@ -66,8 +67,8 @@ Modes: `dictate`, `dictateEnhance`, `command`, `transform` (on selected text, ca
 
 All Rust types use `serde(rename_all = "camelCase")`; TS mirrors are in `lib/types.ts`.
 
-- **Commands** (`invoke`): settings (`get_settings`, `update_settings`, `reset_shortcuts`), API key (`api_key_status`, `set_api_key`, `clear_api_key`, `test_api_key`), models (`list_models`, `download_model`, `cancel_download`, `delete_model`, `set_active_model`), audio (`list_microphones`, `start_mic_test`, `stop_mic_test`), shortcut capture, history (`history_*`), `dictionary_*`, `snippets_*`, `transforms_*`, `notes_*`, `insights_get`, `usage_get`, `pill_action`, `complete_onboarding`, `app_info`.
-- **Events** (`listen`): `pill://state`, `pill://levels`, `mic://level`, `model://progress`, `shortcut://captured`, `history://changed`, `settings://changed`, `hub://navigate`.
+- **Commands** (`invoke`): settings (`get_settings`, `update_settings`, `reset_shortcuts`), API key (`api_key_status`, `set_api_key`, `clear_api_key`, `test_api_key`), models (`list_models`, `download_model`, `cancel_download`, `delete_model`, `set_active_model`), audio (`list_microphones`, `start_mic_test`, `stop_mic_test`), shortcut capture, history (`history_*`), `dictionary_*`, `snippets_*`, `transforms_*`, `notes_*`, `insights_get`, `usage_get`, `pill_action`, `complete_onboarding`, `app_info`, `get_system_appearance`.
+- **Events** (`listen`): `pill://state`, `pill://levels`, `mic://level`, `model://progress`, `shortcut://captured`, `history://changed`, `settings://changed`, `hub://navigate`, `pill://hover`, `system://accent`, `system://text-scale`, `system://backdrop`.
 
 The authoritative list is `commands.rs` and `lib/types.ts`.
 

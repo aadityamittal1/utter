@@ -54,6 +54,11 @@
     outline-offset: 1px;
     box-shadow: 0 0 0 1px var(--surface);
   }
+  /* Programmatic focus targets (headings moved to for screen readers) are not controls: no ring. */
+  :not(button, a, input, textarea, select, [role])[tabindex="-1"]:focus-visible {
+    outline: none;
+    box-shadow: none;
+  }
 
   /* Quiet scrollbars on app scroll containers (not global: HeroUI overlays dislike it). */
   :where(main, aside, nav, textarea, .scroll-thin) {

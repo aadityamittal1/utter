@@ -60,39 +60,40 @@ At 16 px the pill is dropped and only the bars and caret are used (see tray icon
 
 | Name | Hex | Role |
 | --- | --- | --- |
-| Ink | `#14131A` | Text on light, dark-mode background |
-| Paper | `#FAF8F5` | Light-mode background, text on dark |
-| Ember | `#FF5A36` | Brand fill, primary buttons, recording |
-| Ember dark | `#E0401E` | Ember text and links on light, pressed state |
-| Lilac | `#8B7CF6` | Rare secondary accent: selection, highlights |
+| Ink | `#14131A` | App icon and tray glyph (brand assets) |
+| Paper | `#FAF8F5` | Text on Ink in brand assets |
+| Ember | `#FF5A36` | The brand accent: the logo mark, live states, selection, links, chart data |
 
-Warm neutrals (50 to 900) are in `palette.json`. Ink text on Ember passes 6:1; Paper text on Ember does not pass AA for body text, so Ember buttons use Ink labels.
-
-Semantic tokens (full set in `palette.json`):
+The app UI uses a warm neutral ramp so it sits quietly beside every Windows app, with Ember as the only accent. Primary buttons and "on" switches are ink, not Ember. Users can switch the accent to their Windows accent colour in Settings.
 
 | Token | Light | Dark |
 | --- | --- | --- |
-| bg | `#FAF8F5` | `#14131A` |
-| surface | `#FFFFFF` | `#1D1C25` |
-| border | `#E4E0D9` | `#34323F` |
-| text | `#14131A` | `#FAF8F5` |
-| textMuted | `#5E5B66` | `#B4B1BC` |
-| accent (text) | `#E0401E` | `#FF5A36` |
-| highlight | `#8B7CF6` | `#A99EFA` |
+| canvas (window background) | `#F4F2EE` | `#1B1A19` |
+| panel (content surface) | `#FBFBF9` | `#232220` |
+| card | `#FFFFFF` | `#2A2826` |
+| raised (grouped settings, active rows) | `#F1EFEA` | `#312F2C` |
+| text | `#1A1814` | `#F4F2EE` |
+| secondary text | `#5E5A52` | `#C4BFB6` |
+| muted text | `#6C675F` | `#A39D93` |
+| hairline | text at 8% | text at 8% |
+| primary button | `#1A1814`, white label | `#F4F2EE`, ink label |
+| ember as text | `#C2361A` | `#FF8A6E` |
 
-Rule: one accent per screen. Ember is the accent; Lilac is a garnish, never a second button colour.
+All text roles reach 4.5:1 on their surfaces. Ink text on Ember fill is about 5.8:1, so Ember fills use ink labels. Rule: one accent per screen; Ember marks what is live, selected or important, never decoration.
 
 ## Type
 
 | Role | Family | Notes |
 | --- | --- | --- |
-| UI | Inter | 400 / 500 / 600 |
-| Display | Instrument Serif | Headlines and the wordmark. Marketing and onboarding only, not dense UI. |
-| Code and shortcuts | JetBrains Mono | Keys, paths, snippets |
+| UI | Segoe UI Variable (Text / Display) | The Windows 11 system font; 400 and 600. Not bundled. |
+| Display serif | Instrument Serif | Banner headlines, settings section titles, big stat figures. Bundled via `@fontsource` (SIL OFL 1.1). |
+| Code and shortcuts | Cascadia Mono, then Consolas | Keycaps and code, from the system. |
 
-All three are bundled offline via `@fontsource`. Inter, Instrument Serif and JetBrains Mono are licensed under the SIL Open Font License 1.1. The wordmark is outlines derived from Instrument Serif Regular (via `opentype.js`), so no font is needed to display it.
+The wordmark is outlines derived from Instrument Serif Regular (via `opentype.js`), so no font is needed to display it.
 
-Scale (px / line height): caption 12/16, small 13/18, body 14/20, large 16/24, title 20/28, heading 28/34 (serif), display 48/52 (serif). Serif display uses tight tracking (-0.01em) and is never bold or faux-italic.
+Type ramp follows Windows 11 (px / line height, sizes in rem so the Windows text size setting scales them): caption 12/16, body 14/20, body strong 14/20 semibold, body large 18/24, subtitle 20/28, title 28/36, title large 40/52, display 68/92. Small group labels may be uppercase 12 px with 0.06em tracking; nothing else is uppercase. Serif text is never bold or faux-italic.
+
+Shape and motion follow Fluent: controls 10 px radius, cards 16, the content panel 20; one easing curve `cubic-bezier(0, 0, 0, 1)` at 83 / 167 / 250 / 333 ms.
 
 ## App icon
 
@@ -112,16 +113,20 @@ Each state exists at 16, 24, 32 px and `@2x` (32, 48, 64 px). Pick the "light" o
 
 ## Pill (the on-screen recorder)
 
-A small floating capsule at the bottom centre of the screen.
+A small capsule pinned bottom-centre, 12 px above the taskbar, on the monitor under the cursor. Always on top, never focused. Same colours in both themes, because it floats over arbitrary content.
 
-- Shape: full radius, 44 px tall, 20 px side padding, 12 px gap between elements.
-- Surface: Ink at 92% with a 1 px `#34323F` border, in both themes (it floats over arbitrary content).
-- Listening: 12 Ember bars (3 px wide, rounded) driven by mic level, plus elapsed time in Inter 500, Paper.
-- Locked (hands-free): bars plus a Lilac lock dot; click or the toggle shortcut stops.
-- Thinking: bars settle into three slow Ember pulses.
-- Done: the caret from the mark blinks once in Paper, then the pill fades in 200 ms.
-- Error: Ember dark border, message in Paper ("Didn't catch that", "Add an API key to use commands").
-- Motion: ease-out, 120 to 200 ms; reduced-motion shows static bars.
+| State | Size (px) | Content |
+| --- | --- | --- |
+| Idle | 44 x 8 | Solid ink bar with a light hairline, readable on any wallpaper |
+| Idle, hovered | 196 x 32 | Dictate shortcut as keycaps + "to dictate"; click starts hands-free |
+| Listening | 148 x 36 | Ember live dot, 9-bar white waveform (2 px bars, 3 px gaps, 4 to 20 px tall), timer from 10 s |
+| Hands-free | 212 x 36 | Adds an Ember stop button and cancel |
+| Thinking | 72 x 36 | Three slow dots |
+| Done | 212 x 36 | Check + "Inserted" (or "Copied") |
+| Error | 280 x 36 | Danger tint, message, Retry when possible |
+
+- Surface: ink `#1A1814` with a `rgb(255 255 255 / 0.18)` hairline. Warning at 19 minutes uses caution yellow `#FCE100`.
+- Motion: grows on `cubic-bezier(0, 0, 0, 1)`, shrinks on `cubic-bezier(1, 0, 1, 1)`, 167 ms; the waveform eases with fast attack, slow release. Reduced motion shows a static level meter.
 
 ## Sounds
 
