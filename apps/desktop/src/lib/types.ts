@@ -173,6 +173,7 @@ export type PillAction = "start" | "toggle" | "stop" | "cancel" | "retry" | "hid
 export interface EventMap {
   "pill://state": PillState;
   "pill://levels": number[];
+  "pill://hover": { hover: boolean };
   "mic://level": number;
   "model://progress": ModelProgress;
   "shortcut://captured": { chord: string };
