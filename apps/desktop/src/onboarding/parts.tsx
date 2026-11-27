@@ -25,9 +25,9 @@ export function StepFrame({ eyebrow, title, subtitle, children, onSubmit }: { ey
   };
   return (
     <form className="flex flex-col" onSubmit={submit} noValidate>
-      {eyebrow && <p className="mb-2 text-xs font-semibold uppercase tracking-[0.12em] text-ember-text">{eyebrow}</p>}
-      <h1 className="font-display text-[40px] leading-[1.1] text-ink outline-none focus:outline-none">{title}</h1>
-      {subtitle && <p className="mt-3 max-w-[52ch] text-[15px] leading-relaxed text-muted">{subtitle}</p>}
+      {eyebrow && <p className="mb-2 text-caption text-muted">{eyebrow}</p>}
+      <h1 className="text-title-lg text-ink outline-none focus:outline-none">{title}</h1>
+      {subtitle && <p className="mt-3 max-w-[52ch] text-body text-muted">{subtitle}</p>}
       <div className="mt-7">{children}</div>
     </form>
   );
@@ -50,14 +50,14 @@ export function StepFooter({
   return (
     <div className="mt-9 flex items-center gap-3">
       {onBack && (
-        <Button variant="ghost" onClick={onBack} icon={<ArrowLeft size={15} aria-hidden />}>
+        <Button variant="ghost" onClick={onBack} icon={<ArrowLeft size={16} strokeWidth={1.5} aria-hidden />}>
           Back
         </Button>
       )}
       <div className="flex-1" />
       <Button variant={nextVariant} type="submit" disabled={nextDisabled} loading={loading} className="min-w-28">
         {nextLabel}
-        {!loading && <ArrowRight size={15} aria-hidden />}
+        {!loading && <ArrowRight size={16} strokeWidth={1.5} aria-hidden />}
       </Button>
     </div>
   );

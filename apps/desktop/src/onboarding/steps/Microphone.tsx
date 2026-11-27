@@ -64,10 +64,10 @@ export function Microphone({ next, back }: StepProps) {
       {none ? (
         <div className="rounded-card border border-line bg-surface p-5" role="alert">
           <div className="flex items-start gap-3">
-            <MicOff size={18} className="mt-0.5 text-danger" aria-hidden />
+            <MicOff size={16} strokeWidth={1.5} className="mt-0.5 text-danger" aria-hidden />
             <div>
-              <p className="text-sm font-semibold text-ink">No microphone found</p>
-              <p className="mt-1 text-[13px] leading-relaxed text-muted">
+              <p className="text-body-strong text-ink">No microphone found</p>
+              <p className="mt-1 text-body text-muted">
                 {listError ?? "Plug one in, or check Windows: Settings → Privacy & security → Microphone, and turn on “Let desktop apps access your microphone”."}
               </p>
             </div>
@@ -89,17 +89,17 @@ export function Microphone({ next, back }: StepProps) {
               {Array.from({ length: SEGMENTS }, (_, i) => (
                 <span
                   key={i}
-                  className="h-4 flex-1 rounded-[2px] transition-colors duration-75"
+                  className="h-4 flex-1 rounded-sm transition-colors duration-[83ms] ease-fluent"
                   style={{ background: i < lit ? (i > SEGMENTS * 0.8 ? "var(--ember)" : "var(--success)") : "var(--border)" }}
                 />
               ))}
             </div>
             {testError ? (
-              <p role="alert" className="mt-2 text-xs text-danger">
+              <p role="alert" className="mt-2 text-caption text-danger">
                 Couldn't listen to this microphone: {testError}
               </p>
             ) : (
-              <p className="mt-2 text-xs text-muted" aria-live="polite">
+              <p className="mt-2 text-caption text-muted" aria-live="polite">
                 {heard ? "Sounds good, we can hear you." : "Waiting for sound… try saying “testing one two three”."}
               </p>
             )}

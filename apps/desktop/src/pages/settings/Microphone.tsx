@@ -1,11 +1,11 @@
 import { useCallback, useEffect, useRef, useState } from "react";
 import { Mic, MicOff } from "lucide-react";
-import { Button, Select } from "../../components/ui";
+import { Select } from "../../components/ui";
 import { ipc } from "../../lib/ipc";
 import { useBackendEvent } from "../../lib/useBackendEvent";
-import { Section, WithSettings } from "./parts";
+import { Group, RaisedButton, Row, WithSettings } from "./parts";
 
-const SEGMENTS = 24;
+const SEGMENTS = 16;
 
 export default function Microphone() {
   const [devices, setDevices] = useState<string[] | null>(null);
@@ -80,20 +80,27 @@ export default function Microphone() {
   return (
     <WithSettings>
       {(s, update) => (
-        <div className="flex flex-col gap-4">
-          <Section title="Input device" description="Choose which microphone Utter listens to.">
-            <div className="py-4">
-              {devices && devices.length === 0 ? (
-                <p className="flex items-center gap-2 text-sm text-muted">
-                  <MicOff size={16} aria-hidden /> No microphones found. Plug one in and reopen this tab.
-                </p>
-              ) : (
+        <>
+          <Group title="Microphone">
+            <Row
+              title="Input device"
+              description={
+                devices && devices.length === 0 ? (
+                  <span className="inline-flex items-center gap-2">
+                    <MicOff size={16} strokeWidth={1.5} aria-hidden /> No microphones found. Plug one in and reopen Settings.
+                  </span>
+                ) : (
+                  "Choose which microphone Utter listens to."
+                )
+              }
+            >
+              {!(devices && devices.length === 0) && (
                 <Select
-                  label="Microphone"
+                  aria-label="Microphone"
                   value={s.microphone ?? ""}
                   disabled={!devices}
                   onChange={(e) => void update({ microphone: e.target.value || null })}
-                  className="max-w-sm"
+                  className="w-64"
                 >
                   <option value="">System default</option>
                   {s.microphone && devices && !devices.includes(s.microphone) && <option value={s.microphone}>{s.microphone} (not connected)</option>}
@@ -104,35 +111,37 @@ export default function Microphone() {
                   ))}
                 </Select>
               )}
-            </div>
-          </Section>
-
-          <Section title="Test" description="Say something. The meter should move.">
-            <div className="flex flex-col gap-3 py-4">
-              <div className="flex items-center gap-4">
-                <Button variant={testing ? "secondary" : "primary"} icon={<Mic size={15} />} onClick={() => void toggle()}>
-                  {testing ? "Stop test" : "Test microphone"}
-                </Button>
-                <Meter level={testing ? level : 0} active={testing} />
+            </Row>
+            <Row
+              title="Test microphone"
+              description={
+                error ? (
+                  <span role="alert" className="text-danger">
+                    {error}
+                  </span>
+                ) : (
+                  "Say something. The meter should move."
+                )
+              }
+            >
+              <div className="w-40">
+                <Meter level={testing ? level : 0} />
               </div>
-              {error && (
-                <p role="alert" className="text-sm text-danger">
-                  {error}
-                </p>
-              )}
-            </div>
-          </Section>
-
-          <p className="max-w-[60ch] text-[13px] text-muted">
-            Tip: Bluetooth headsets switch to a low-quality call mode when the mic opens, which can hurt accuracy and delay the first word. For best results use your laptop mic, a USB mic, or a wired headset.
+              <RaisedButton icon={<Mic size={16} strokeWidth={1.5} />} onClick={() => void toggle()}>
+                {testing ? "Stop test" : "Test microphone"}
+              </RaisedButton>
+            </Row>
+          </Group>
+          <p className="-mt-4 max-w-[60ch] text-caption text-faint">
+            Bluetooth headsets switch to a low-quality call mode when the mic opens, which can hurt accuracy and delay the first word. For the best results use your laptop mic, a USB mic, or a wired headset.
           </p>
-        </div>
+        </>
       )}
     </WithSettings>
   );
 }
 
-function Meter({ level, active }: { level: number; active: boolean }) {
+function Meter({ level }: { level: number }) {
   const lit = Math.round(level * SEGMENTS);
   return (
     <div
@@ -141,12 +150,12 @@ function Meter({ level, active }: { level: number; active: boolean }) {
       aria-valuemin={0}
       aria-valuemax={100}
       aria-valuenow={Math.round(level * 100)}
-      className="flex h-6 flex-1 items-center gap-[3px]"
+      className="flex h-6 items-center gap-[3px]"
     >
       {Array.from({ length: SEGMENTS }, (_, i) => (
         <span
           key={i}
-          className={`h-full flex-1 rounded-[2px] transition-colors duration-75 ${i < lit ? (i > SEGMENTS * 0.8 ? "bg-danger" : "bg-ember") : active ? "bg-line-strong" : "bg-line"}`}
+          className={`h-full flex-1 rounded-sm transition-colors duration-[83ms] ease-fluent ${i < lit ? (i > SEGMENTS * 0.8 ? "bg-danger" : "bg-ember") : "bg-(--surface-tertiary)"}`}
         />
       ))}
     </div>

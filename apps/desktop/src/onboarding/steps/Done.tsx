@@ -54,8 +54,8 @@ export function Done({ back, download }: StepProps) {
       onSubmit={() => void finish()}
     >
       {pending && (
-        <p className="mb-5 flex items-start gap-2 rounded-card bg-highlight-soft px-4 py-3 text-[13px] leading-relaxed text-ink" role="status">
-          <Loader2 size={14} className="mt-0.5 shrink-0 animate-spin text-highlight" aria-hidden />
+        <p className="mb-5 flex items-start gap-2 rounded-card bg-ember-soft px-4 py-3 text-body text-ink" role="status">
+          <Loader2 size={16} strokeWidth={1.5} className="mt-0.5 shrink-0 animate-spin text-ember-text" aria-hidden />
           Your speech model is still downloading. Utter will switch to it when it's done.
         </p>
       )}
@@ -69,9 +69,9 @@ export function Done({ back, download }: StepProps) {
           </>,
           <>Utter keeps running from the tray icon near your clock. Closing this window won't quit it. Right-click the icon to open the hub or quit.</>,
         ].map((line, i) => (
-          <li key={i} className="flex items-start gap-3 text-sm leading-relaxed text-ink">
-            <span className="mt-0.5 flex size-5 shrink-0 items-center justify-center rounded-full bg-success-soft text-success">
-              <Check size={12} aria-hidden />
+          <li key={i} className="flex items-start gap-3 text-body text-ink">
+            <span className="mt-0.5 flex size-6 shrink-0 items-center justify-center rounded-full bg-success-soft text-success">
+              <Check size={16} strokeWidth={1.5} aria-hidden />
             </span>
             <span>{line}</span>
           </li>

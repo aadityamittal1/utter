@@ -102,15 +102,27 @@ describe("settings store", () => {
 
 describe("nav store", () => {
   it("navigates and mirrors the page in the URL hash", () => {
-    useNav.getState().navigate("settings");
-    expect(useNav.getState().page).toBe("settings");
-    expect(location.hash).toBe("#settings");
+    useNav.getState().navigate("history");
+    expect(useNav.getState().page).toBe("history");
+    expect(location.hash).toBe("#history");
   });
 
-  it("openSettings navigates to the settings page", () => {
+  it("openSettings opens the dialog at a section and leaves the page alone", () => {
     useNav.getState().navigate("home");
-    useNav.getState().openSettings();
-    expect(useNav.getState().page).toBe("settings");
+    useNav.getState().openSettings("ai");
+    expect(useNav.getState()).toMatchObject({ page: "home", settingsOpen: true, settingsSection: "ai" });
+    useNav.getState().closeSettings();
+    expect(useNav.getState().settingsOpen).toBe(false);
+    useNav.getState().openSettings("nonsense");
+    expect(useNav.getState().settingsSection).toBe("general");
+    useNav.getState().closeSettings();
+  });
+
+  it('navigate("settings") opens the dialog instead of routing', () => {
+    useNav.getState().navigate("home");
+    useNav.getState().navigate("settings");
+    expect(useNav.getState()).toMatchObject({ page: "home", settingsOpen: true });
+    useNav.getState().closeSettings();
   });
 
   it("toggles the sidebar", () => {

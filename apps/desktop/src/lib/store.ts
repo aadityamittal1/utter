@@ -103,9 +103,16 @@ export const useSettings = create<SettingsStore>((set) => {
   };
 });
 
+/** Sections of the Settings dialog. */
+export const SETTINGS_SECTIONS = ["general", "system", "ai", "speech", "privacy", "about"] as const;
+export type SettingsSection = (typeof SETTINGS_SECTIONS)[number];
+
+const asSection = (s: string | undefined): SettingsSection => ((SETTINGS_SECTIONS as readonly string[]).includes(s ?? "") ? (s as SettingsSection) : "general");
+
+/** Settings is a dialog, never a routed page: a "#settings" hash lands on Home. */
 function pageFromHash(): Page {
   const h = typeof location === "undefined" ? "" : location.hash.replace(/^#\/?/, "");
-  return (PAGES as string[]).includes(h) ? (h as Page) : "home";
+  return h !== "settings" && (PAGES as string[]).includes(h) ? (h as Page) : "home";
 }
 
 const SIDEBAR_KEY = "utter.sidebarCollapsed";
@@ -113,8 +120,12 @@ const SIDEBAR_KEY = "utter.sidebarCollapsed";
 interface NavStore {
   page: Page;
   navigate: (page: Page) => void;
-  /** Open Settings, optionally at a section. Today this navigates to the settings page; the Settings dialog replaces it. */
+  /** Open the Settings dialog, optionally at a section. */
   openSettings: (section?: string) => void;
+  closeSettings: () => void;
+  setSettingsSection: (section: SettingsSection) => void;
+  settingsOpen: boolean;
+  settingsSection: SettingsSection;
   sidebarCollapsed: boolean;
   toggleSidebar: () => void;
 }
@@ -123,6 +134,8 @@ interface NavStore {
 export const useNav = create<NavStore>((set, get) => ({
   page: pageFromHash(),
   navigate: (page) => {
+    // Anything that used to route to the settings page (tray, Home, hub://navigate) opens the dialog.
+    if (page === "settings") return get().openSettings();
     set({ page });
     try {
       history.replaceState(null, "", `#${page}`);
@@ -130,7 +143,11 @@ export const useNav = create<NavStore>((set, get) => ({
       /* ignore */
     }
   },
-  openSettings: () => get().navigate("settings"),
+  settingsOpen: false,
+  settingsSection: "general",
+  openSettings: (section) => set({ settingsOpen: true, settingsSection: asSection(section) }),
+  closeSettings: () => set({ settingsOpen: false }),
+  setSettingsSection: (settingsSection) => set({ settingsSection }),
   sidebarCollapsed: (() => {
     try {
       return localStorage.getItem(SIDEBAR_KEY) === "1";
@@ -156,7 +173,10 @@ export function useStoreListeners(): void {
     if ((PAGES as string[]).includes(page)) useNav.getState().navigate(page as Page);
   });
   useEffect(() => {
-    const onHash = () => useNav.setState({ page: pageFromHash() });
+    const onHash = () => {
+      if (location.hash.replace(/^#\/?/, "") === "settings") useNav.getState().openSettings();
+      else useNav.setState({ page: pageFromHash() });
+    };
     window.addEventListener("hashchange", onHash);
     return () => window.removeEventListener("hashchange", onHash);
   }, []);

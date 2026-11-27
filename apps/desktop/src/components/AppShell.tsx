@@ -6,6 +6,7 @@ import { ToastHost } from "./ui/Toast";
 import { Sidebar } from "./Sidebar";
 import { TitleBar } from "./TitleBar";
 import { ErrorBoundary } from "./ErrorBoundary";
+import SettingsDialog from "../pages/settings/SettingsDialog";
 
 export function AppShell() {
   const page = useNav((s) => s.page);
@@ -49,7 +50,7 @@ export function AppShell() {
     );
   }
 
-  const Page = PAGE_COMPONENTS[page];
+  const Page = PAGE_COMPONENTS[page === "settings" ? "home" : page];
   return (
     <div className="flex h-full flex-col bg-bg">
       <TitleBar />
@@ -64,6 +65,7 @@ export function AppShell() {
           </div>
         </main>
       </div>
+      <SettingsDialog />
       <ToastHost />
     </div>
   );

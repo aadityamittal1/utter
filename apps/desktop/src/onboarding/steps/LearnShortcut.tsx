@@ -67,18 +67,18 @@ export function LearnShortcut({ next, back }: StepProps) {
     >
       <div
         className={cn(
-          "flex flex-col items-center gap-5 rounded-panel border px-6 py-10 transition-colors duration-200",
+          "flex flex-col items-center gap-5 rounded-panel border px-6 py-10 transition-colors duration-[167ms] ease-fluent",
           active ? "border-ember bg-ember-soft" : "border-line bg-surface",
         )}
       >
         <div className="flex items-center gap-3" aria-label={keys.join(" plus ")}>
-          {keys.length === 0 && <span className="text-sm text-faint">No dictate shortcut set</span>}
+          {keys.length === 0 && <span className="text-body text-faint">No dictate shortcut set</span>}
           {keys.map((k, i) => (
             <span key={`${k}-${i}`} className="flex items-center gap-3">
               {i > 0 && <span className="text-faint" aria-hidden>+</span>}
               <kbd
                 className={cn(
-                  "inline-flex h-12 min-w-14 items-center justify-center rounded-[10px] border border-b-[3px] px-4 font-mono text-base font-medium transition-all duration-150",
+                  "inline-flex h-12 min-w-14 items-center justify-center rounded-control border border-b-[3px] px-4 font-mono text-body-lg font-medium transition-[background-color,border-color,color] duration-[167ms] ease-fluent",
                   active
                     ? "-translate-y-0.5 border-ember bg-ember text-on-accent shadow-[0_6px_18px_-6px_var(--accent-fill)]"
                     : "border-line-strong bg-surface text-ink",
@@ -89,11 +89,11 @@ export function LearnShortcut({ next, back }: StepProps) {
             </span>
           ))}
         </div>
-        <p className="text-sm text-muted" aria-live="polite">
+        <p className="text-body text-muted" aria-live="polite">
           {active ? "Listening… let go when you're done." : pressedOnce ? "That's it. Easy, right?" : "Try it now. Press and hold."}
         </p>
       </div>
-      <ul className="mt-5 space-y-1.5 text-[13px] text-muted">
+      <ul className="mt-5 space-y-1.5 text-body text-muted">
         <li>
           Prefer hands-free? {handsFree ? <><Kbd>{formatChord(handsFree).join("+")}</Kbd> or </> : null}double-tap the shortcut to keep listening, press again to stop.
         </li>
@@ -101,7 +101,7 @@ export function LearnShortcut({ next, back }: StepProps) {
           Press <Kbd>Esc</Kbd> while recording to cancel. You can change every shortcut in Settings.
         </li>
       </ul>
-      {!isTauri() && <p className="mt-3 text-xs text-faint">Preview: press the keys on your keyboard to simulate.</p>}
+      {!isTauri() && <p className="mt-3 text-caption text-faint">Preview: press the keys on your keyboard to simulate.</p>}
       <StepFooter onBack={back} />
     </StepFrame>
   );
