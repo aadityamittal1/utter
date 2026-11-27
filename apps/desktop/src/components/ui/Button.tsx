@@ -25,7 +25,7 @@ export interface ButtonProps extends Base {
   icon?: ReactNode;
   loading?: boolean;
   disabled?: boolean;
-  /** Shown as a tooltip (also works while disabled, to say why). */
+  /** Hover/focus tooltip. Not for disabled reasons: put those in helper text, since disabled buttons are not focusable. */
   title?: string;
   /** Mapped to HeroUI's onPress. */
   onClick?: () => void;
@@ -38,7 +38,7 @@ function WithTitle({ title, children }: { title?: string; children: ReactNode })
   if (!title) return children;
   return (
     <Tooltip delay={300}>
-      <Tooltip.Trigger>{children}</Tooltip.Trigger>
+      {children}
       <Tooltip.Content>{title}</Tooltip.Content>
     </Tooltip>
   );

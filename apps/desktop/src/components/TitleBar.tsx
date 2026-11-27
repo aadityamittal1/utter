@@ -1,10 +1,14 @@
 import type { ReactNode } from "react";
 import { Copy, Minus, Moon, PanelLeft, Square, Sun, X } from "lucide-react";
 import { useNav, useSettings } from "../lib/store";
+import { applyAppearance } from "../lib/appearance";
 import { useMaximized, useResolvedTheme, windowAction, type WindowAction } from "../lib/shell";
 import { cn } from "../lib/cn";
 import { IconButton } from "./ui/Button";
+import { SIDEBAR_ID } from "./Sidebar";
 
+// Window chrome is measured in px on purpose: it must not grow with the Windows text-scale setting.
+// Caption buttons span the full bar height and sit flush at the top-right, so the corner pixel hits Close.
 function Caption({ label, action, danger, children }: { label: string; action: WindowAction; danger?: boolean; children: ReactNode }) {
   return (
     <button
@@ -13,8 +17,8 @@ function Caption({ label, action, danger, children }: { label: string; action: W
       tabIndex={-1}
       onClick={() => void windowAction(action)}
       className={cn(
-        "flex h-8 w-[46px] items-center justify-center text-ink transition-colors duration-[83ms]",
-        danger ? "hover:bg-[#c42b1c] hover:text-white" : "hover:bg-hover",
+        "flex h-[48px] w-[46px] items-center justify-center text-ink transition-colors duration-[83ms]",
+        danger ? "hover:bg-[#c42b1c] hover:text-white active:bg-[#b3271a] active:text-white" : "hover:bg-hover active:bg-active",
       )}
     >
       {children}
@@ -23,25 +27,37 @@ function Caption({ label, action, danger, children }: { label: string; action: W
 }
 
 /** 48px custom title bar on the canvas colour (the Rust side turns native decorations off). */
-export function TitleBar() {
+export function TitleBar({ showSidebarToggle = true }: { showSidebarToggle?: boolean }) {
   const toggleSidebar = useNav((s) => s.toggleSidebar);
   const collapsed = useNav((s) => s.sidebarCollapsed);
+  const settings = useSettings((s) => s.settings);
   const update = useSettings((s) => s.update);
   const resolved = useResolvedTheme();
   const maximized = useMaximized();
   const dark = resolved === "dark";
 
+  const toggleTheme = () => {
+    const theme = dark ? "light" : "dark";
+    // Without loaded settings (error screen) there is nothing to persist: apply directly.
+    if (settings) void update({ theme });
+    else applyAppearance({ theme });
+  };
+
   return (
-    <div data-tauri-drag-region className="flex h-12 shrink-0 items-center justify-between pl-3">
-      <div data-tauri-drag-region className="flex items-center gap-1">
-        <IconButton label={collapsed ? "Show sidebar" : "Hide sidebar"} onClick={toggleSidebar} aria-expanded={!collapsed}>
-          <PanelLeft size={20} strokeWidth={1.5} />
-        </IconButton>
+    <div data-tauri-drag-region className="flex h-[48px] shrink-0 items-start justify-between pl-3">
+      <div data-tauri-drag-region className="flex h-[48px] items-center gap-1">
+        {showSidebarToggle && (
+          <IconButton label="Toggle sidebar" onClick={toggleSidebar} aria-expanded={!collapsed} aria-controls={SIDEBAR_ID} className="[&_svg]:size-5">
+            <PanelLeft strokeWidth={1.5} />
+          </IconButton>
+        )}
       </div>
-      <div data-tauri-drag-region className="flex items-center">
-        <IconButton label={dark ? "Switch to light theme" : "Switch to dark theme"} onClick={() => void update({ theme: dark ? "light" : "dark" })} className="mr-2">
-          {dark ? <Sun size={20} strokeWidth={1.5} /> : <Moon size={20} strokeWidth={1.5} />}
-        </IconButton>
+      <div data-tauri-drag-region className="flex items-start">
+        <div className="flex h-[48px] items-center pr-2">
+          <IconButton label={dark ? "Switch to light theme" : "Switch to dark theme"} onClick={toggleTheme} className="[&_svg]:size-5">
+            {dark ? <Sun strokeWidth={1.5} /> : <Moon strokeWidth={1.5} />}
+          </IconButton>
+        </div>
         <Caption label="Minimize" action="minimize">
           <Minus size={16} strokeWidth={1.25} />
         </Caption>

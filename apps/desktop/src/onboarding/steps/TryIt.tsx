@@ -92,7 +92,7 @@ export function TryIt({ next, back }: StepProps) {
               <p className="mt-1.5 text-[13px] leading-relaxed text-muted">{latest.rawText}</p>
             </div>
             <div className="p-4">
-              <p className="text-[11px] font-semibold uppercase tracking-wider text-accent">After</p>
+              <p className="text-[11px] font-semibold uppercase tracking-wider text-ember-text">After</p>
               <p className="mt-1.5 text-[13px] leading-relaxed text-ink">{latest.finalText}</p>
             </div>
           </div>

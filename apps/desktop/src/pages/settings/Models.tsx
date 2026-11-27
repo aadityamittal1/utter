@@ -99,7 +99,7 @@ export default function Models() {
                   <article
                     key={m.id}
                     aria-label={m.label}
-                    className={`rounded-card border px-4 py-3.5 ${m.active ? "border-ember bg-accent-soft" : "border-line bg-surface"}`}
+                    className={`rounded-card border px-4 py-3.5 ${m.active ? "border-ember bg-ember-soft" : "border-line bg-surface"}`}
                   >
                     <div className="flex items-start justify-between gap-4">
                       <div className="min-w-0">

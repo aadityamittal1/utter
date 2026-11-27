@@ -16,12 +16,17 @@ export function AppShell() {
     void load();
   }, [load]);
 
-  if (loading) return <div className="h-full bg-bg" aria-busy="true" />;
+  if (loading)
+    return (
+      <div className="flex h-full flex-col bg-bg" aria-busy="true">
+        <TitleBar showSidebarToggle={false} />
+      </div>
+    );
 
   if (!settings) {
     return (
       <div className="flex h-full flex-col bg-bg">
-        <TitleBar />
+        <TitleBar showSidebarToggle={false} />
         <div className="flex flex-1 items-center justify-center p-8 text-center">
           <div>
             <h1 className="text-title text-ink">Utter couldn't start</h1>
@@ -35,7 +40,7 @@ export function AppShell() {
   if (!settings.onboarded) {
     return (
       <div className="flex h-full flex-col bg-bg">
-        <TitleBar />
+        <TitleBar showSidebarToggle={false} />
         <div className="min-h-0 flex-1 overflow-y-auto">
           <Onboarding />
         </div>

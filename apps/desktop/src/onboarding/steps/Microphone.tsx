@@ -90,7 +90,7 @@ export function Microphone({ next, back }: StepProps) {
                 <span
                   key={i}
                   className="h-4 flex-1 rounded-[2px] transition-colors duration-75"
-                  style={{ background: i < lit ? (i > SEGMENTS * 0.8 ? "var(--accent)" : "var(--success)") : "var(--border)" }}
+                  style={{ background: i < lit ? (i > SEGMENTS * 0.8 ? "var(--ember)" : "var(--success)") : "var(--border)" }}
                 />
               ))}
             </div>

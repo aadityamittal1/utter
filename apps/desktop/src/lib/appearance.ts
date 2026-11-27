@@ -9,6 +9,8 @@ export type ResolvedTheme = "light" | "dark";
 
 export const THEME_KEY = "utter.theme";
 export const ACCENT_SOURCE_KEY = "utter.accentSource";
+export const TEXT_SCALE_KEY = "utter.textScale";
+export const ACCENT_KEY = "utter.accent";
 const MIN_TEXT_SCALE = 1;
 const MAX_TEXT_SCALE = 2.25;
 const INK = "#1a1814";
@@ -102,6 +104,9 @@ function cache() {
   try {
     localStorage.setItem(THEME_KEY, state.theme);
     localStorage.setItem(ACCENT_SOURCE_KEY, state.accentSource);
+    localStorage.setItem(TEXT_SCALE_KEY, String(state.textScale));
+    if (state.accent) localStorage.setItem(ACCENT_KEY, JSON.stringify(state.accent));
+    else localStorage.removeItem(ACCENT_KEY);
   } catch {
     /* storage unavailable: the choice still applies for this session */
   }
@@ -114,8 +119,18 @@ function listen() {
   media("(prefers-reduced-motion: reduce)")?.addEventListener("change", render);
   // Another window (same origin) changed the theme: follow it.
   window.addEventListener("storage", (e) => {
-    if (e.key === THEME_KEY || e.key === ACCENT_SOURCE_KEY) loadCached();
+    if (e.key === THEME_KEY || e.key === ACCENT_SOURCE_KEY || e.key === TEXT_SCALE_KEY || e.key === ACCENT_KEY) loadCached();
   });
+}
+
+function parseAccent(raw: string): SystemAccent | null {
+  try {
+    const v = JSON.parse(raw) as Record<string, unknown>;
+    const keys = ["accent", "light1", "light2", "light3", "dark1", "dark2", "dark3"] as const;
+    return keys.every((k) => typeof v[k] === "string" && /^#[0-9a-f]{6}$/i.test(v[k] as string)) ? (v as unknown as SystemAccent) : null;
+  } catch {
+    return null;
+  }
 }
 
 function loadCached() {
@@ -124,6 +139,10 @@ function loadCached() {
     if (t === "system" || t === "light" || t === "dark") state.theme = t;
     const a = localStorage.getItem(ACCENT_SOURCE_KEY);
     if (a === "utter" || a === "windows") state.accentSource = a;
+    const ts = localStorage.getItem(TEXT_SCALE_KEY);
+    if (ts !== null) state.textScale = clampTextScale(Number(ts));
+    const acc = localStorage.getItem(ACCENT_KEY);
+    state.accent = acc ? parseAccent(acc) : null;
   } catch {
     /* ignore */
   }
@@ -147,11 +166,13 @@ export function applyCachedAppearance(): void {
 
 export function setSystemAccent(accent: SystemAccent | null): void {
   state.accent = accent;
+  cache();
   render();
 }
 
 export function setTextScale(factor: number): void {
   state.textScale = clampTextScale(factor);
+  cache();
   render();
 }
 

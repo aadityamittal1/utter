@@ -68,7 +68,7 @@ export function LearnShortcut({ next, back }: StepProps) {
       <div
         className={cn(
           "flex flex-col items-center gap-5 rounded-panel border px-6 py-10 transition-colors duration-200",
-          active ? "border-ember bg-accent-soft" : "border-line bg-surface",
+          active ? "border-ember bg-ember-soft" : "border-line bg-surface",
         )}
       >
         <div className="flex items-center gap-3" aria-label={keys.join(" plus ")}>

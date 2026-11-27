@@ -82,7 +82,7 @@ export default function Snippets() {
               onClick={() => setDraft({ trigger: p.trigger, expansion: "", placeholder: p.placeholder })}
               className="inline-flex h-8 items-center gap-1.5 rounded-full border border-line bg-surface px-3 text-[13px] text-ink transition-colors hover:border-line-strong hover:bg-hover"
             >
-              <Plus size={13} aria-hidden className="text-accent" />
+              <Plus size={13} aria-hidden className="text-ember-text" />
               {p.label}
             </button>
           ))}
@@ -126,7 +126,7 @@ export default function Snippets() {
               <div className="text-[11px] font-medium text-faint">When I say</div>
               <div className="mt-0.5 truncate text-[15px] font-semibold text-ink">“{s.trigger}”</div>
               <div className="my-2 flex items-center gap-2 text-faint">
-                <ArrowRight size={14} aria-hidden className="text-accent" />
+                <ArrowRight size={14} aria-hidden className="text-ember-text" />
                 <span className="text-[11px] font-medium">Insert</span>
               </div>
               <p className="line-clamp-3 whitespace-pre-wrap break-words font-mono text-[12.5px] leading-relaxed text-muted">{s.expansion}</p>

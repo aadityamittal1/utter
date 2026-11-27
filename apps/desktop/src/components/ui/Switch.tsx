@@ -14,9 +14,11 @@ export interface SwitchProps {
 export function Switch({ checked, onChange, label, disabled, id }: SwitchProps) {
   return (
     <HeroSwitch id={id} isSelected={checked} onChange={onChange} isDisabled={disabled} aria-label={label}>
-      <HeroSwitch.Control>
-        <HeroSwitch.Thumb />
-      </HeroSwitch.Control>
+      <HeroSwitch.Content>
+        <HeroSwitch.Control>
+          <HeroSwitch.Thumb />
+        </HeroSwitch.Control>
+      </HeroSwitch.Content>
     </HeroSwitch>
   );
 }

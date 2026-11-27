@@ -1,6 +1,6 @@
 import type { LucideIcon } from "lucide-react";
 import { BookA, ChartColumn, CircleHelp, History, House, Palette, Settings, StickyNote, TextCursorInput, WandSparkles } from "lucide-react";
-import { Tooltip } from "@heroui/react";
+import { Focusable, Tooltip } from "@heroui/react";
 import { useNav } from "../lib/store";
 import { HELP_URL, openExternal } from "../lib/shell";
 import type { Page } from "../lib/types";
@@ -24,6 +24,8 @@ export const NAV_ITEMS: NavItem[] = [
   { page: "insights", label: "Insights", icon: ChartColumn },
 ];
 
+export const SIDEBAR_ID = "app-sidebar";
+
 const SETTINGS_ITEM: NavItem = { page: "settings", label: "Settings", icon: Settings };
 
 const ROW =
@@ -45,13 +47,14 @@ function NavRow({ icon: Icon, label, active, collapsed, onPress }: { icon: Lucid
   if (!collapsed) return button;
   return (
     <Tooltip delay={300}>
-      {button}
+      {/* Focusable hands the tooltip its hover/focus handlers; a bare native button would not receive them. */}
+      <Focusable>{button}</Focusable>
       <Tooltip.Content placement="right">{label}</Tooltip.Content>
     </Tooltip>
   );
 }
 
-/** Sits on the canvas (no panel of its own): 220px, or a 64px icon rail when collapsed. */
+/** Sits on the canvas (no panel of its own): 220px, or a 76px icon rail when collapsed. */
 export function Sidebar() {
   const page = useNav((s) => s.page);
   const navigate = useNav((s) => s.navigate);
@@ -60,6 +63,7 @@ export function Sidebar() {
 
   return (
     <aside
+      id={SIDEBAR_ID}
       className={cn(
         "flex h-full shrink-0 flex-col pb-3 pl-3 pr-2 transition-[width] duration-[250ms] ease-fluent",
         collapsed ? "w-[76px]" : "w-[220px]",

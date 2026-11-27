@@ -18,7 +18,7 @@ export function Section({ title, description, children, className }: { title: st
 export function Badge({ children, tone = "neutral" }: { children: ReactNode; tone?: "neutral" | "ember" | "success" | "lilac" }) {
   const tones = {
     neutral: "bg-muted-surface text-muted",
-    ember: "bg-accent-soft text-accent",
+    ember: "bg-ember-soft text-ember-text",
     success: "bg-success-soft text-success",
     lilac: "bg-highlight-soft text-highlight",
   };

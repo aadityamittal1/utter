@@ -38,7 +38,7 @@ export default function About() {
               e.preventDefault();
               void openExternal(REPO);
             }}
-            className="inline-flex items-center gap-1.5 text-sm font-medium text-accent underline-offset-4 hover:underline"
+            className="inline-flex items-center gap-1.5 text-sm font-medium text-ember-text underline-offset-4 hover:underline"
           >
             github.com/aadityamittal1/utter <ExternalLink size={14} aria-hidden />
           </a>

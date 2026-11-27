@@ -1,6 +1,6 @@
 import { Children, isValidElement, useId } from "react";
 import type { InputHTMLAttributes, ReactElement, ReactNode, Ref, TextareaHTMLAttributes } from "react";
-import { Input as HeroInput, Label, ListBox, Select as HeroSelect, TextArea as HeroTextArea } from "@heroui/react";
+import { Description, FieldError, Input as HeroInput, Label, ListBox, Select as HeroSelect, TextArea as HeroTextArea } from "@heroui/react";
 import { cn } from "../../lib/cn";
 
 interface FieldShellProps {
@@ -139,10 +139,12 @@ export function Select({ label, helper, error, className, id, value, onChange, o
           <HeroSelect.Value />
           <HeroSelect.Indicator />
         </HeroSelect.Trigger>
-        <HeroSelect.Popover className="rounded-control">
-          <ListBox>
+        {helper && !error && <Description className="text-caption text-muted">{helper}</Description>}
+        {error && <FieldError className="text-caption text-danger">{error}</FieldError>}
+        <HeroSelect.Popover>
+          <ListBox className="p-1.5">
             {opts.map((o) => (
-              <ListBox.Item key={toKey(o.value)} id={toKey(o.value)} textValue={o.label} isDisabled={o.disabled} className="rounded-md">
+              <ListBox.Item key={toKey(o.value)} id={toKey(o.value)} textValue={o.label} isDisabled={o.disabled} className="rounded-[6px]">
                 {o.label}
                 <ListBox.ItemIndicator />
               </ListBox.Item>
@@ -150,13 +152,6 @@ export function Select({ label, helper, error, className, id, value, onChange, o
           </ListBox>
         </HeroSelect.Popover>
       </HeroSelect>
-      {error ? (
-        <p role="alert" className="text-caption text-danger">
-          {error}
-        </p>
-      ) : helper ? (
-        <p className="text-caption text-muted">{helper}</p>
-      ) : null}
     </div>
   );
 }
