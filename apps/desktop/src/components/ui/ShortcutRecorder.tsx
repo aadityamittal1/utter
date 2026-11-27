@@ -26,8 +26,26 @@ function keyName(k: string): string {
  * such as "Ctrl+Win+Space". Inside the app the backend captures keys globally
  * (so the Win key works); in a browser it falls back to window key events.
  */
-export function ShortcutRecorder({ value, onChange, label }: { value: string | undefined; onChange: (chord: string) => void; label: string }) {
+export function ShortcutRecorder({
+  value,
+  onChange,
+  label,
+  onRecordingChange,
+}: {
+  value: string | undefined;
+  onChange: (chord: string) => void;
+  label: string;
+  /** Fires when recording starts or ends (lets a parent dialog ignore Esc meanwhile). */
+  onRecordingChange?: (recording: boolean) => void;
+}) {
   const [recording, setRecording] = useState(false);
+  const recordingCb = useRef(onRecordingChange);
+  useEffect(() => {
+    recordingCb.current = onRecordingChange;
+  });
+  useEffect(() => {
+    recordingCb.current?.(recording);
+  }, [recording]);
   const onChangeRef = useRef(onChange);
   useEffect(() => {
     onChangeRef.current = onChange;

@@ -57,7 +57,7 @@ export function AppShell() {
         <Sidebar />
         {/* Content panel: warm layer under the title bar, inset 8px right and bottom. */}
         <main id="content" className="mb-2 mr-2 min-w-0 flex-1 overflow-y-auto rounded-shell border border-line bg-panel">
-          <div key={page} className="page-enter mx-auto w-full max-w-[880px] px-10 pb-16 pt-10">
+          <div key={page} className={`page-enter mx-auto w-full px-10 pb-16 pt-10 ${page === "home" ? "max-w-[1120px]" : "max-w-[880px]"}`}>
             <ErrorBoundary resetKey={page}>
               <Page />
             </ErrorBoundary>

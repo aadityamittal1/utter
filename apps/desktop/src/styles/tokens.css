@@ -59,6 +59,11 @@
   --danger: #c42b1c;
   --danger-soft: rgb(196 43 28 / 0.09);
 
+  /* banner cards: deep ink in light, a raised warm dark in dark */
+  --banner: #1a1814;
+  --on-banner: #f4f2ee;
+  --on-banner-muted: #c4bfb6;
+
   --hover: rgb(26 24 20 / 0.045);
   --active: rgb(26 24 20 / 0.075);
   --scrim: rgb(26 24 20 / 0.45);
@@ -140,6 +145,8 @@
   --warning: #fce100;
   --danger: #ff99a4;
   --danger-soft: rgb(255 153 164 / 0.13);
+
+  --banner: #34312c;
 
   --hover: rgb(244 242 238 / 0.06);
   --active: rgb(244 242 238 / 0.1);
@@ -331,15 +338,6 @@
   --ease-fluent-exit: cubic-bezier(1, 0, 1, 1);
 }
 
-:root {
-  --banner: #1a1814;
-  --on-banner: #f4f2ee;
-  --on-banner-muted: #c4bfb6;
-}
-.dark,
-[data-theme="dark"] {
-  --banner: #151412;
-}
 @theme inline {
   --color-banner: var(--banner);
   --color-on-banner: var(--on-banner);

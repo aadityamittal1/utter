@@ -1,15 +1,16 @@
 import { useMemo, useState } from "react";
 import { ArrowRight, BookA, Download, Pencil, Sparkles, Trash2 } from "lucide-react";
-import { Button, EmptyState, IconButton, PageHeader, SkeletonRows } from "../components/ui";
+import { Button, EmptyState, IconButton, PageHeader, SkeletonRows, Tooltip } from "../components/ui";
 import { ipc } from "../lib/ipc";
 import { toast } from "../lib/store";
 import type { DictEntry } from "../lib/types";
 import { errText, useLoader } from "./parts/dictionary/useLoader";
 import { downloadText, ImportButton } from "./parts/dictionary/fileio";
 import { EntryModal } from "./parts/dictionary/EntryModal";
-import { ListCard, ListRow, ListToolbar, PageTabs, type SortKey } from "./parts/dictionary/ListParts";
+import { ListCard, ListRow, ListToolbar, PageTabs } from "./parts/dictionary/ListParts";
+import { listDictionary, type DictTab, type SortKey } from "./parts/dictionary/listing";
 
-type Tab = "all" | "replacements" | "words";
+type Tab = DictTab;
 const TABS = [
   { id: "all", label: "All" },
   { id: "replacements", label: "Replacements" },
@@ -52,13 +53,7 @@ export default function Dictionary() {
     }
   };
 
-  const shown = useMemo(() => {
-    if (!entries) return [];
-    const q = query.trim().toLowerCase();
-    let list = entries.filter((d) => (tab === "replacements" ? !!d.heardAs : tab === "words" ? !d.heardAs : true));
-    if (q) list = list.filter((d) => d.word.toLowerCase().includes(q) || (d.heardAs ?? "").toLowerCase().includes(q));
-    return sort === "az" ? [...list].sort((a, b) => a.word.localeCompare(b.word, undefined, { sensitivity: "base" })) : list;
-  }, [entries, tab, query, sort]);
+  const shown = useMemo(() => (entries ? listDictionary(entries, tab, query, sort) : []), [entries, tab, query, sort]);
 
   const empty = entries?.length === 0;
 
@@ -135,11 +130,18 @@ export default function Dictionary() {
                 {d.heardAs && (
                   <>
                     <span className="truncate text-muted">{d.heardAs}</span>
-                    <ArrowRight size={16} strokeWidth={1.5} aria-label="becomes" className="shrink-0 text-faint" />
+                    <ArrowRight size={16} strokeWidth={1.5} role="img" aria-label="becomes" className="shrink-0 text-faint" />
                   </>
                 )}
                 <span className="truncate">{d.word}</span>
-                {d.auto && <Sparkles size={16} strokeWidth={1.5} aria-label="Learned from your edits" className="shrink-0 text-ember-text" />}
+                {d.auto && (
+                  <Tooltip delay={300}>
+                    <span tabIndex={0} role="img" aria-label="Learned from your edits" className="shrink-0 rounded text-faint">
+                      <Sparkles size={16} strokeWidth={1.5} aria-hidden />
+                    </span>
+                    <Tooltip.Content>Learned from your edits</Tooltip.Content>
+                  </Tooltip>
+                )}
               </div>
             </ListRow>
           ))}

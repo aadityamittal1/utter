@@ -1,4 +1,4 @@
-import { useMemo, useState } from "react";
+import { useMemo, useRef, useState } from "react";
 import { ArrowRight, Download, Pencil, Plus, TextCursorInput, Trash2 } from "lucide-react";
 import { Button, EmptyState, IconButton, PageHeader, SkeletonRows } from "../components/ui";
 import { ipc } from "../lib/ipc";
@@ -6,8 +6,10 @@ import { toast } from "../lib/store";
 import type { Snippet } from "../lib/types";
 import { errText, useLoader } from "./parts/dictionary/useLoader";
 import { downloadText, ImportButton } from "./parts/dictionary/fileio";
-import { ListCard, ListRow, ListToolbar, type SortKey } from "./parts/dictionary/ListParts";
+import { ListCard, ListRow, ListToolbar } from "./parts/dictionary/ListParts";
+import { listSnippets, type SortKey } from "./parts/dictionary/listing";
 import { availablePresets } from "./parts/snippets/presets";
+import { focusFallback } from "./parts/snippets/focus";
 import { SnippetModal, type SnippetDraft } from "./parts/snippets/SnippetModal";
 
 export default function Snippets() {
@@ -15,6 +17,13 @@ export default function Snippets() {
   const [draft, setDraft] = useState<SnippetDraft | null>(null);
   const [query, setQuery] = useState("");
   const [sort, setSort] = useState<SortKey>("recent");
+  const addRef = useRef<HTMLButtonElement>(null);
+  const openerRef = useRef<HTMLElement | null>(null);
+
+  const open = (d: SnippetDraft) => {
+    openerRef.current = document.activeElement as HTMLElement | null;
+    setDraft(d);
+  };
 
   const remove = async (s: Snippet) => {
     try {
@@ -46,13 +55,9 @@ export default function Snippets() {
 
   // Only offer quick adds once we know which triggers already exist.
   const presets = useMemo(() => (items ? availablePresets(items.map((s) => s.trigger)) : []), [items]);
-  const shown = useMemo(() => {
-    const q = query.trim().toLowerCase();
-    const list = !items ? [] : q ? items.filter((s) => s.trigger.toLowerCase().includes(q) || s.expansion.toLowerCase().includes(q)) : items;
-    return sort === "az" ? [...list].sort((a, b) => a.trigger.localeCompare(b.trigger, undefined, { sensitivity: "base" })) : list;
-  }, [items, query, sort]);
+  const shown = useMemo(() => (items ? listSnippets(items, query, sort) : []), [items, query, sort]);
 
-  const add = () => setDraft({ trigger: "", expansion: "" });
+  const add = () => open({ trigger: "", expansion: "" });
 
   return (
     <div>
@@ -61,7 +66,7 @@ export default function Snippets() {
         actions={
           <>
             <ImportButton onText={importCsv}>Import</ImportButton>
-            <Button variant="primary" onClick={add}>
+            <Button ref={addRef} variant="primary" onClick={add}>
               Add new
             </Button>
           </>
@@ -110,10 +115,10 @@ export default function Snippets() {
           {shown.map((s) => (
             <ListRow
               key={s.id}
-              onActivate={() => setDraft({ id: s.id, trigger: s.trigger, expansion: s.expansion })}
+              onActivate={() => open({ id: s.id, trigger: s.trigger, expansion: s.expansion })}
               actions={
                 <>
-                  <IconButton label={`Edit ${s.trigger}`} onClick={() => setDraft({ id: s.id, trigger: s.trigger, expansion: s.expansion })}>
+                  <IconButton label={`Edit ${s.trigger}`} onClick={() => open({ id: s.id, trigger: s.trigger, expansion: s.expansion })}>
                     <Pencil size={16} strokeWidth={1.5} />
                   </IconButton>
                   <IconButton label={`Delete ${s.trigger}`} onClick={() => void remove(s)}>
@@ -123,8 +128,10 @@ export default function Snippets() {
               }
             >
               <div className="flex min-w-0 items-center gap-2 text-body text-ink">
-                <span className="shrink-0">{s.trigger}</span>
-                <ArrowRight size={16} strokeWidth={1.5} aria-label="inserts" className="shrink-0 text-faint" />
+                <span className="max-w-[45%] shrink-0 truncate" title={s.trigger}>
+                  {s.trigger}
+                </span>
+                <ArrowRight size={16} strokeWidth={1.5} role="img" aria-label="inserts" className="shrink-0 text-faint" />
                 <span className="truncate text-muted">{s.expansion.replace(/\s+/g, " ")}</span>
               </div>
             </ListRow>
@@ -139,10 +146,10 @@ export default function Snippets() {
             <button
               key={p.trigger}
               type="button"
-              onClick={() => setDraft({ trigger: p.trigger, expansion: "", placeholder: p.placeholder })}
+              onClick={() => open({ trigger: p.trigger, expansion: "", placeholder: p.placeholder })}
               className="inline-flex h-8 items-center gap-1.5 rounded-full border border-line bg-surface px-3 text-body text-ink transition-colors duration-[var(--dur-fast)] ease-fluent hover:border-line-strong hover:bg-hover"
             >
-              <Plus size={16} strokeWidth={1.5} aria-hidden className="text-ember-text" />
+              <Plus size={16} strokeWidth={1.5} aria-hidden className="text-muted" />
               {p.label}
             </button>
           ))}
@@ -161,6 +168,8 @@ export default function Snippets() {
           onSaved={async () => {
             await load();
             setDraft(null);
+            // The quick-add chip that opened this is gone now: land on Add new, not the page body.
+            focusFallback(openerRef.current, () => addRef.current);
           }}
         />
       )}

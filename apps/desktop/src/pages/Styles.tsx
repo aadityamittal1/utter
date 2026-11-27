@@ -1,12 +1,11 @@
 import { useState } from "react";
-import { Card, PageHeader, SettingRow, Switch, Tabs } from "../components/ui";
-import { cn } from "../lib/cn";
+import { Card, Label, PageHeader, Radio, RadioGroup, SettingRow, Switch } from "../components/ui";
 import { useNav, useSettings } from "../lib/store";
 import type { Category, CleanupLevel, StyleKind } from "../lib/types";
 import { Banner } from "./parts/home/Banner";
 import { PageTabs } from "./parts/dictionary/ListParts";
 import { StyleCard } from "./parts/styles/StyleCard";
-import { allowedStyles, BANNER_TITLES, CATEGORY_APPS, CATEGORY_LABELS, CONTEXT_TABS, isStyleAllowed, nextStyle, type ContextTab } from "./parts/styles/examples";
+import { allowedStyles, BANNER_TITLES, CATEGORY_APPS, CATEGORY_LABELS, CONTEXT_TABS, ENHANCE_WHERE, isStyleAllowed, nextStyle, type ContextTab } from "./parts/styles/examples";
 
 const CLEANUP: { value: CleanupLevel; label: string; help: string }[] = [
   { value: "off", label: "Off", help: "Your words exactly as heard. Nothing is removed or fixed." },
@@ -17,7 +16,7 @@ const CLEANUP: { value: CleanupLevel; label: string; help: string }[] = [
 export default function Styles() {
   const settings = useSettings((s) => s.settings);
   const update = useSettings((s) => s.update);
-  const navigate = useNav((s) => s.navigate);
+  const openSettings = useNav((s) => s.openSettings);
   const [tab, setTab] = useState<ContextTab>("personal");
   const [otherCat, setOtherCat] = useState<Category>("other");
   if (!settings) return null;
@@ -43,23 +42,18 @@ export default function Styles() {
 
       <div className="mt-6 flex flex-col gap-6">
         {def.categories.length > 1 && (
-          <div role="radiogroup" aria-label="App type" className="flex flex-wrap gap-2">
+          <RadioGroup aria-label="Other app types" orientation="horizontal" value={otherCat} onChange={(v) => setOtherCat(v as Category)} className="flex-wrap gap-x-6 gap-y-2">
             {def.categories.map((c) => (
-              <button
-                key={c}
-                type="button"
-                role="radio"
-                aria-checked={otherCat === c}
-                onClick={() => setOtherCat(c)}
-                className={cn(
-                  "h-8 rounded-full border px-3 text-body transition-colors duration-[var(--dur-fast)] ease-fluent",
-                  otherCat === c ? "border-transparent bg-ink-fill text-on-ink" : "border-line bg-surface text-muted hover:bg-hover hover:text-ink",
-                )}
-              >
-                {CATEGORY_LABELS[c]}
-              </button>
+              <Radio key={c} value={c}>
+                <Radio.Control>
+                  <Radio.Indicator />
+                </Radio.Control>
+                <Radio.Content>
+                  <Label>{CATEGORY_LABELS[c]}</Label>
+                </Radio.Content>
+              </Radio>
             ))}
-          </div>
+          </RadioGroup>
         )}
 
         <Banner
@@ -74,7 +68,7 @@ export default function Styles() {
             </ul>
           }
         >
-          Style formatting only applies in English. Utter picks the style from the app you are typing in.
+          Utter picks the style from the app you dictate into.
         </Banner>
 
         <div
@@ -95,22 +89,22 @@ export default function Styles() {
         </div>
 
         <Card className="divide-y divide-line px-5">
-          <SettingRow title={`Always enhance in ${CATEGORY_LABELS[cat].toLowerCase()}`} description="Sends every dictation here through Claude, as if you had held the enhance shortcut.">
-            <Switch checked={enhance} onChange={toggleEnhance} label={`Always enhance in ${CATEGORY_LABELS[cat]}`} />
+          <SettingRow title={`Always enhance in ${ENHANCE_WHERE[cat]}`} description="Sends every dictation here through Claude, as if you had held the enhance shortcut.">
+            <Switch checked={enhance} onChange={toggleEnhance} label={`Always enhance in ${ENHANCE_WHERE[cat]}`} />
           </SettingRow>
           <SettingRow title="Cleanup" description={current?.help}>
-            <Tabs variant="primary" selectedKey={settings.cleanupLevel} onSelectionChange={(k) => void update({ cleanupLevel: String(k) as CleanupLevel })}>
-              <Tabs.ListContainer>
-                <Tabs.List aria-label="Cleanup level">
-                  {CLEANUP.map((c) => (
-                    <Tabs.Tab key={c.value} id={c.value} className="text-body-strong">
-                      {c.label}
-                      <Tabs.Indicator />
-                    </Tabs.Tab>
-                  ))}
-                </Tabs.List>
-              </Tabs.ListContainer>
-            </Tabs>
+            <RadioGroup aria-label="Cleanup level" orientation="horizontal" value={settings.cleanupLevel} onChange={(v) => void update({ cleanupLevel: v as CleanupLevel })} className="gap-x-5">
+              {CLEANUP.map((c) => (
+                <Radio key={c.value} value={c.value}>
+                  <Radio.Control>
+                    <Radio.Indicator />
+                  </Radio.Control>
+                  <Radio.Content>
+                    <Label>{c.label}</Label>
+                  </Radio.Content>
+                </Radio>
+              ))}
+            </RadioGroup>
           </SettingRow>
         </Card>
       </div>
@@ -118,7 +112,7 @@ export default function Styles() {
       <p className="mt-6 max-w-[70ch] text-caption text-muted">
         Utter finds the app type from the window you are typing in
         {settings.contextAwareness ? "" : " (context awareness is currently off)"}. It looks at the app and window title only, never at what is on screen.{" "}
-        <button type="button" onClick={() => navigate("settings")} className="text-body-strong text-ember-text underline underline-offset-2 hover:no-underline">
+        <button type="button" onClick={() => openSettings("privacy")} className="font-semibold text-ember-text underline underline-offset-2 hover:no-underline">
           See Privacy in Settings
         </button>
       </p>

@@ -90,17 +90,15 @@ export default function History() {
   return (
     <>
       <PageHeader title="History" description="Everything you have dictated, searchable." actions={actions} />
-      <div className="relative mb-6">
-        <Search size={16} strokeWidth={1.5} className="pointer-events-none absolute left-3 top-1/2 z-10 -translate-y-1/2 text-faint" aria-hidden />
-        <Input
-          type="text"
-          value={query}
-          onChange={(e) => setQuery(e.target.value)}
-          placeholder="Search text or app"
-          aria-label="Search history"
-          className="pl-9"
-        />
-      </div>
+      <Input
+        type="text"
+        icon={<Search size={16} strokeWidth={1.5} aria-hidden />}
+        value={query}
+        onChange={(e) => setQuery(e.target.value)}
+        placeholder="Search text or app"
+        aria-label="Search history"
+        className="mb-6"
+      />
 
       {error && !items ? (
         <EmptyState icon={<HistoryIcon size={20} strokeWidth={1.5} />} title="Couldn't load history" description={error} action={<Button onClick={() => load(true)}>Try again</Button>} />

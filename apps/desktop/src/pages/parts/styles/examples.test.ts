@@ -1,6 +1,6 @@
 import { describe, expect, it } from "vitest";
 import { CATEGORIES, STYLE_KINDS } from "../../../lib/types";
-import { allowedStyles, BANNER_TITLES, CATEGORY_APPS, CONTEXT_TABS, disabledReason, isStyleAllowed, nextStyle, renderExample, STYLE_TRAITS } from "./examples";
+import { allowedStyles, BANNER_TITLES, CATEGORY_APPS, ENHANCE_WHERE, CONTEXT_TABS, disabledReason, isStyleAllowed, nextStyle, renderExample, STYLE_TRAITS } from "./examples";
 
 describe("context tabs", () => {
   it("cover every category exactly once", () => {
@@ -10,6 +10,7 @@ describe("context tabs", () => {
   it("every category has a banner title and apps, every style a trait", () => {
     for (const c of CATEGORIES) {
       expect(BANNER_TITLES[c]).toBeTruthy();
+      expect(ENHANCE_WHERE[c]).toBeTruthy();
       expect(CATEGORY_APPS[c].length).toBeGreaterThan(0);
     }
     for (const s of STYLE_KINDS) expect(STYLE_TRAITS[s]).toBeTruthy();

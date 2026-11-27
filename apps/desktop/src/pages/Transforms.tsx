@@ -1,10 +1,11 @@
-import { useState } from "react";
+import { useRef, useState } from "react";
 import { Button, Card, Chord, EmptyState, SkeletonRows } from "../components/ui";
 import { ipc } from "../lib/ipc";
 import { toast, useSettings } from "../lib/store";
 import type { Transform } from "../lib/types";
 import { errText, useLoader } from "./parts/dictionary/useLoader";
 import { Banner, BANNER_BUTTON, RewriteLines } from "./parts/home/Banner";
+import { focusFallback } from "./parts/snippets/focus";
 import { CreateCard, TransformCard, TransformModal, type TransformDraft } from "./parts/transforms/cards";
 
 const MAX_CUSTOM = 8;
@@ -26,12 +27,20 @@ export default function Transforms() {
   const { data: items, error: loadError, reload: load } = useLoader<Transform[]>(ipc.transformsList);
   // undefined = closed, otherwise the draft being created or edited
   const [editing, setEditing] = useState<TransformDraft | undefined>(undefined);
+  const createRef = useRef<HTMLButtonElement>(null);
+  const openerRef = useRef<HTMLElement | null>(null);
+  const openEditor = (d: TransformDraft) => {
+    openerRef.current = document.activeElement as HTMLElement | null;
+    setEditing(d);
+  };
 
   const remove = async (id: string) => {
     try {
       await ipc.transformsDelete(id);
       setEditing(undefined);
       await load();
+      // The card that opened the editor is gone: land on Create new.
+      focusFallback(openerRef.current, () => createRef.current);
     } catch (e) {
       toast.error(errText(e));
     }
@@ -41,7 +50,7 @@ export default function Transforms() {
   const full = customCount >= MAX_CUSTOM;
   const sc = settings?.shortcuts ?? {};
   const hinted = items?.find((t) => t.shortcut);
-  const create = () => setEditing({ name: "", instruction: "" });
+  const create = () => openEditor({ name: "", instruction: "" });
 
   return (
     <div>
@@ -57,7 +66,7 @@ export default function Transforms() {
 
       <div className="flex flex-col gap-6">
         <Banner
-          title="Select text, press a shortcut, done"
+          title="Rewrite text in place"
           art={<RewriteLines />}
           actions={
             <Button className={BANNER_BUTTON} onClick={create} disabled={full}>
@@ -65,7 +74,7 @@ export default function Transforms() {
             </Button>
           }
         >
-          Each transform is an instruction for Claude. Run one on any selected text and it is rewritten in place. Needs an API key.
+          Each transform is an instruction for Claude. Needs an API key.
         </Banner>
 
         <Card className="divide-y divide-line px-5">
@@ -87,7 +96,7 @@ export default function Transforms() {
                 {customCount} of {MAX_CUSTOM} custom
               </span>
             </div>
-            <Button variant="primary" disabled={full} onClick={create} title={full ? `You can add up to ${MAX_CUSTOM} custom transforms.` : undefined}>
+            <Button ref={createRef} variant="primary" disabled={full} onClick={create} title={full ? `You can add up to ${MAX_CUSTOM} custom transforms.` : undefined}>
               Create new
             </Button>
           </div>
@@ -99,11 +108,11 @@ export default function Transforms() {
           ) : (
             <ul className="grid grid-cols-1 gap-4 sm:grid-cols-3">
               {items.map((t) => (
-                <li key={t.id} className="contents">
-                  <TransformCard t={t} onOpen={() => setEditing({ id: t.id, name: t.name, instruction: t.instruction, shortcut: t.shortcut, builtin: t.builtin })} />
+                <li key={t.id} className="flex">
+                  <TransformCard t={t} onOpen={() => openEditor({ id: t.id, name: t.name, instruction: t.instruction, shortcut: t.shortcut, builtin: t.builtin })} />
                 </li>
               ))}
-              <li className="contents">
+              <li className="flex">
                 <CreateCard onClick={create} disabled={full} hint={full ? `Limit of ${MAX_CUSTOM} reached` : undefined} />
               </li>
             </ul>

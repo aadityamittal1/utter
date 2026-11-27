@@ -1,9 +1,11 @@
 import { useEffect, useRef, useState } from "react";
 import type { ReactNode } from "react";
 import { ArrowDownAZ, ArrowUpDown, Check, Search, X } from "lucide-react";
-import { Label } from "@heroui/react";
-import { Dropdown, IconButton, Tabs } from "../../../components/ui";
-import { cn } from "../../../lib/cn";
+import { Dropdown, IconButton, Label, Tabs } from "../../../components/ui";
+import { MenuIconButton } from "../history/MenuIconButton";
+import type { SortKey } from "./listing";
+
+export type { SortKey } from "./listing";
 
 export interface TabDef {
   id: string;
@@ -28,7 +30,6 @@ export function PageTabs({ tabs, value, onChange, label }: { tabs: TabDef[]; val
   );
 }
 
-export type SortKey = "recent" | "az";
 const SORTS: { id: SortKey; label: string }[] = [
   { id: "recent", label: "Recently added" },
   { id: "az", label: "A to Z" },
@@ -108,16 +109,9 @@ export function ListToolbar({
           </IconButton>
         )}
         <Dropdown>
-          <Dropdown.Trigger
-            aria-label="Sort"
-            isDisabled={disabled}
-            className={cn(
-              "inline-flex size-8 items-center justify-center rounded-control text-muted outline-none transition-colors duration-[var(--dur-fast)] ease-fluent hover:bg-hover data-[pressed]:bg-active",
-              "data-[disabled]:opacity-50",
-            )}
-          >
+          <MenuIconButton label="Sort" disabled={disabled}>
             {sort === "az" ? <ArrowDownAZ size={16} strokeWidth={1.5} /> : <ArrowUpDown size={16} strokeWidth={1.5} />}
-          </Dropdown.Trigger>
+          </MenuIconButton>
           <Dropdown.Popover placement="bottom end">
             <Dropdown.Menu aria-label="Sort by" selectionMode="single" selectedKeys={[sort]} onAction={(k) => onSort(String(k) as SortKey)}>
               {SORTS.map((s) => (

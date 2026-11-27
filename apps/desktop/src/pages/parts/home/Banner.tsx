@@ -16,7 +16,7 @@ const WAVE_BARS = Array.from({ length: 21 }, (_, i) => {
 
 export function EmberWaveform({ className }: { className?: string }) {
   return (
-    <svg viewBox="0 0 252 100" className={cn("h-24 w-auto", className)} aria-hidden>
+    <svg viewBox="0 0 252 100" className={cn("h-20 w-auto", className)} aria-hidden>
       {WAVE_BARS.map((h, i) => (
         <rect key={i} x={i * 12 + 1} y={50 - h / 2} width={6} height={h} rx={3} className={i % 5 === 2 ? "fill-ember" : "fill-ember/70"} />
       ))}
@@ -27,7 +27,7 @@ export function EmberWaveform({ className }: { className?: string }) {
 /** Lines of text being rewritten: the grey draft becomes the ember result. Decorative. */
 export function RewriteLines({ className }: { className?: string }) {
   return (
-    <svg viewBox="0 0 240 112" className={cn("h-24 w-auto", className)} aria-hidden>
+    <svg viewBox="0 0 240 112" className={cn("h-16 w-auto", className)} aria-hidden>
       <rect x={0} y={8} width={150} height={8} rx={4} className="fill-on-banner/25" />
       <rect x={0} y={28} width={196} height={8} rx={4} className="fill-on-banner/25" />
       <rect x={0} y={48} width={118} height={8} rx={4} className="fill-on-banner/25" />
@@ -39,8 +39,8 @@ export function RewriteLines({ className }: { className?: string }) {
 }
 
 /**
- * Dark card (radius 16) with a serif headline, one line of copy, optional actions,
- * decorative art on the right and an optional dismiss button. Dark in both themes.
+ * Wide, short dark card: serif headline on one line, one line of copy, decorative art, and the
+ * action on the right. Dark in both themes, so focus rings use the light colour. Optional dismiss.
  */
 export function Banner({
   title,
@@ -58,15 +58,20 @@ export function Banner({
   className?: string;
 }) {
   return (
-    <section className={cn("relative flex items-center justify-between gap-8 overflow-hidden rounded-card border border-line bg-banner px-8 py-7 text-on-banner", className)}>
-      <div className="min-w-0 max-w-[44ch]">
+    <section
+      className={cn(
+        "@container relative flex min-h-32 items-center gap-6 overflow-hidden rounded-card border border-line bg-banner px-8 py-6 text-on-banner [--focus:var(--on-banner)] [--ring:var(--on-banner)]",
+        className,
+      )}
+    >
+      <div className="min-w-0 flex-1">
         <h2 className="text-serif-heading text-on-banner">{title}</h2>
-        {children && <p className="mt-2 text-body text-on-banner-muted">{children}</p>}
-        {actions && <div className="mt-5 flex flex-wrap items-center gap-2">{actions}</div>}
+        {children && <p className="mt-1 text-body text-on-banner-muted">{children}</p>}
       </div>
-      {art && <div className="hidden shrink-0 pr-2 sm:block">{art}</div>}
+      {art && <div className="hidden shrink-0 @[620px]:block">{art}</div>}
+      {actions && <div className="flex shrink-0 flex-wrap items-center gap-2">{actions}</div>}
       {onDismiss && (
-        <IconButton label="Dismiss" onClick={onDismiss} className="absolute right-3 top-3 text-on-banner-muted hover:text-on-banner">
+        <IconButton label="Dismiss" onClick={onDismiss} className="absolute right-2 top-2 text-on-banner-muted hover:bg-on-banner/10 hover:text-on-banner">
           <X size={16} strokeWidth={1.5} />
         </IconButton>
       )}

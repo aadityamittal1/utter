@@ -11,12 +11,14 @@ export interface ModalProps {
   size?: "xs" | "sm" | "md" | "lg" | "cover" | "full";
   /** Extra classes for the dialog surface (e.g. a wider max width). */
   className?: string;
+  /** Stop Esc from closing (e.g. while a control is using Esc itself). */
+  keyboardDismissDisabled?: boolean;
 }
 
 /** Controlled HeroUI dialog: focus trap, Esc, backdrop click and focus return come from React Aria. */
-export function Modal({ isOpen, onClose, title, children, footer, size = "md", className }: ModalProps) {
+export function Modal({ isOpen, onClose, title, children, footer, size = "md", className, keyboardDismissDisabled }: ModalProps) {
   return (
-    <HeroModal.Backdrop isOpen={isOpen} onOpenChange={(open) => !open && onClose()}>
+    <HeroModal.Backdrop isOpen={isOpen} onOpenChange={(open) => !open && onClose()} isKeyboardDismissDisabled={keyboardDismissDisabled}>
       <HeroModal.Container size={size}>
         <HeroModal.Dialog className={cn("rounded-card", className)}>
           <HeroModal.CloseTrigger />

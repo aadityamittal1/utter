@@ -1,11 +1,12 @@
 import { useEffect, useMemo, useRef, useState } from "react";
 import { Copy, CornerDownLeft, Ellipsis, FileDiff, Pencil, Play, Plus, RotateCw, Sparkles, Square, Trash2, X } from "lucide-react";
 import { ipc } from "../../../lib/ipc";
+import { cn } from "../../../lib/cn";
 import { formatTime } from "../../../lib/format";
 import { toast } from "../../../lib/store";
 import type { HistoryItem } from "../../../lib/types";
-import { Button, Dropdown, IconButton, Textarea } from "../../../components/ui";
-import { Label } from "@heroui/react";
+import { Button, Dropdown, IconButton, Label, Spinner, Textarea } from "../../../components/ui";
+import { MenuIconButton } from "./MenuIconButton";
 import { CATEGORY_LABEL } from "./shared";
 import { wordDiff } from "./diff";
 import { playClip } from "./player";
@@ -92,7 +93,7 @@ export function HistoryRow({ item, onChanged }: { item: HistoryItem; onChanged: 
     try {
       await ipc.dictionaryAdd(w);
       setCandidates((c) => c.filter((x) => x !== w));
-      toast.success(`Added "${w}" to your dictionary`);
+      toast.success(`Added “${w}” to your dictionary`);
     } catch (e) {
       toast.error(errText(e));
     }
@@ -128,7 +129,7 @@ export function HistoryRow({ item, onChanged }: { item: HistoryItem; onChanged: 
     <li className="group px-5 py-4 transition-colors duration-[var(--dur-fast)] ease-fluent hover:bg-row-hover focus-within:bg-row-hover">
       <div className="flex items-start">
         <time dateTime={new Date(item.createdAt).toISOString()} className="w-20 shrink-0 pt-0.5 text-caption tabular-nums text-faint">
-          {formatTime(item.createdAt).replace(" ", "").toLowerCase()}
+          {formatTime(item.createdAt).replace(/s/g, "").toLowerCase()}
         </time>
         <div className="min-w-0 flex-1">
           {editing ? (
@@ -158,15 +159,16 @@ export function HistoryRow({ item, onChanged }: { item: HistoryItem; onChanged: 
               {item.appName} · {CATEGORY_LABEL[item.category]}
             </span>
             {item.usedAi && (
-              <span className="inline-flex items-center gap-1 text-ember-text">
-                <Sparkles size={12} strokeWidth={1.5} aria-hidden /> Enhanced
+              <span className="inline-flex items-center gap-1">
+                <Sparkles size={16} strokeWidth={1.5} aria-hidden /> Enhanced
               </span>
             )}
             {item.error && <span className="text-danger">{item.error}</span>}
           </div>
         </div>
         {!editing && (
-          <div className="-my-1 ml-3 flex shrink-0 items-center opacity-0 transition-opacity duration-[var(--dur-fast)] ease-fluent focus-within:opacity-100 group-focus-within:opacity-100 group-hover:opacity-100 [@media(hover:none)]:opacity-100">
+          <div className={cn("-my-1 ml-3 flex shrink-0 items-center transition-opacity duration-[var(--dur-fast)] ease-fluent focus-within:opacity-100 group-focus-within:opacity-100 group-hover:opacity-100 [@media(hover:none)]:opacity-100", busy !== null ? "opacity-100" : "opacity-0")}>
+            {(busy === "retry" || busy === "delete" || busy === "insert") && <Spinner size="sm" className="mr-1" aria-label={busy === "delete" ? "Deleting" : busy === "retry" ? "Retrying" : "Inserting"} />}
             {item.hasAudio && (
               <IconButton label={playing ? "Stop audio" : "Play audio"} onClick={togglePlay}>
                 {playing ? <Square size={16} strokeWidth={1.5} /> : <Play size={16} strokeWidth={1.5} />}
@@ -176,13 +178,9 @@ export function HistoryRow({ item, onChanged }: { item: HistoryItem; onChanged: 
               <Copy size={16} strokeWidth={1.5} />
             </IconButton>
             <Dropdown>
-              <Dropdown.Trigger
-                aria-label="More actions"
-                isDisabled={busy !== null}
-                className="inline-flex size-8 items-center justify-center rounded-control text-muted outline-none transition-colors duration-[var(--dur-fast)] ease-fluent hover:bg-hover data-[pressed]:bg-active"
-              >
+              <MenuIconButton label="More actions" disabled={busy !== null}>
                 <Ellipsis size={16} strokeWidth={1.5} />
-              </Dropdown.Trigger>
+              </MenuIconButton>
               <Dropdown.Popover placement="bottom end">
                 <Dropdown.Menu onAction={onMenu}>
                   <Dropdown.Item id="insert" textValue="Insert again">
@@ -218,10 +216,10 @@ export function HistoryRow({ item, onChanged }: { item: HistoryItem; onChanged: 
           {candidates.map((w) => (
             <span key={w} className="inline-flex items-center rounded-full border border-line bg-surface text-caption text-ink">
               <button type="button" onClick={() => addWord(w)} className="inline-flex items-center gap-1 rounded-l-full py-0.5 pl-2 pr-1.5 hover:bg-hover">
-                <Plus size={12} strokeWidth={1.5} aria-hidden /> {w}
+                <Plus size={16} strokeWidth={1.5} aria-hidden /> {w}
               </button>
               <button type="button" aria-label={`Dismiss ${w}`} onClick={() => setCandidates((c) => c.filter((x) => x !== w))} className="rounded-r-full py-0.5 pr-1.5 text-faint hover:text-ink">
-                <X size={12} strokeWidth={1.5} />
+                <X size={16} strokeWidth={1.5} />
               </button>
             </span>
           ))}

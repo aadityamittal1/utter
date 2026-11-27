@@ -46,6 +46,7 @@ function Figure({ value, label }: { value: string; label: string }) {
 export default function Home() {
   const settings = useSettings((s) => s.settings);
   const navigate = useNav((s) => s.navigate);
+  const openSettings = useNav((s) => s.openSettings);
   const [stats, setStats] = useState<Insights | null>(null);
   const [recent, setRecent] = useState<HistoryItem[] | null>(null);
   const [key, setKey] = useState<ApiKeyStatus | null>(null);
@@ -91,16 +92,17 @@ export default function Home() {
     <>
       <h1 className="pb-6 text-title text-ink">{homeTitle(settings?.userName)}</h1>
 
-      <div className="grid items-start gap-6 min-[1100px]:grid-cols-[minmax(0,1fr)_280px]">
+      <div className="@container">
+      <div className="grid items-start gap-6 @min-[860px]:grid-cols-[minmax(0,1fr)_280px]">
         <div className="flex min-w-0 flex-col gap-8">
           {key && !key.set && (
-            <div className="flex items-center gap-4 rounded-card border border-line bg-ember-soft px-5 py-4">
-              <KeyRound size={20} strokeWidth={1.5} className="shrink-0 text-ember-text" aria-hidden />
+            <div className="flex items-center gap-4 rounded-card border border-line bg-muted-surface px-5 py-4">
+              <KeyRound size={20} strokeWidth={1.5} className="shrink-0 text-muted" aria-hidden />
               <div className="min-w-0 flex-1">
                 <div className="text-body-strong text-ink">Set up your API key</div>
                 <div className="text-caption text-muted">Dictation works without it. Add a key to unlock enhance, commands and transforms.</div>
               </div>
-              <Button variant="primary" onClick={() => navigate("settings")}>
+              <Button variant="primary" onClick={() => openSettings("ai")}>
                 Add key
               </Button>
             </div>
@@ -108,7 +110,7 @@ export default function Home() {
 
           {!bannerGone && (
             <Banner
-              title="Rewrite text with one shortcut"
+              title="Rewrite text anywhere"
               art={<EmberWaveform />}
               onDismiss={dismissBanner}
               actions={
@@ -117,7 +119,7 @@ export default function Home() {
                 </Button>
               }
             >
-              Select text in any app, press a transform’s shortcut, and Claude rewrites it in place.
+              One shortcut rewrites selected text.
             </Banner>
           )}
 
@@ -171,9 +173,10 @@ export default function Home() {
             </section>
           )}
 
-          <Card className="px-5 py-4" aria-label="Tip">
+          <section aria-label="Tip">
+          <Card className="px-5 py-4">
             <div className="flex items-center gap-2 text-body-strong text-ink">
-              <Lightbulb size={16} strokeWidth={1.5} className="text-ember-text" aria-hidden />
+              <Lightbulb size={16} strokeWidth={1.5} className="text-muted" aria-hidden />
               {t.title}
             </div>
             <p className="mt-2 text-body text-muted">{t.body}</p>
@@ -181,6 +184,7 @@ export default function Home() {
               Next tip
             </button>
           </Card>
+          </section>
 
           <section aria-label="Shortcuts" className="flex flex-col gap-3 px-1 pt-2">
             {SHORTCUT_ROWS.map((r) => (
@@ -191,6 +195,7 @@ export default function Home() {
             ))}
           </section>
         </aside>
+      </div>
       </div>
     </>
   );

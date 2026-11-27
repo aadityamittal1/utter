@@ -47,7 +47,7 @@ export function StyleCard({
         aria-hidden
         className={cn(
           "mt-3 flex size-10 items-center justify-center self-end rounded-full text-body-strong",
-          selected ? "bg-ember text-on-ember" : "bg-ember-soft text-ember-text",
+          selected ? "bg-ember text-on-ember" : "bg-muted-surface text-muted",
         )}
       >
         {initial}

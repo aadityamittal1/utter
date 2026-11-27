@@ -27,7 +27,7 @@ export function EntryModal({ entry, onClose, onSaved }: { entry: DictEntry | nul
     setBusy(true);
     try {
       const heardAs = fix && heard.trim() ? heard.trim() : undefined;
-      if (entry) await ipc.dictionaryUpdate({ ...entry, word: word.trim(), heardAs });
+      if (entry) await ipc.dictionaryUpdate({ ...entry, word: word.trim(), heardAs, auto: false });
       else await ipc.dictionaryAdd(word.trim(), heardAs);
       await onSaved();
     } catch (e) {

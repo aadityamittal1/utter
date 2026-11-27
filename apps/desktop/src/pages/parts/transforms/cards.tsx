@@ -6,10 +6,20 @@ import { ipc } from "../../../lib/ipc";
 import type { Transform } from "../../../lib/types";
 import { errText } from "../dictionary/useLoader";
 
-export function ShortcutField({ value, onChange, label }: { value: string | undefined; onChange: (v: string | undefined) => void; label: string }) {
+export function ShortcutField({
+  value,
+  onChange,
+  label,
+  onRecordingChange,
+}: {
+  value: string | undefined;
+  onChange: (v: string | undefined) => void;
+  label: string;
+  onRecordingChange?: (recording: boolean) => void;
+}) {
   return (
     <div className="flex items-center gap-2">
-      <ShortcutRecorder value={value} onChange={onChange} label={label} />
+      <ShortcutRecorder value={value} onChange={onChange} label={label} onRecordingChange={onRecordingChange} />
       {value && (
         <Button size="sm" variant="ghost" onClick={() => onChange(undefined)}>
           Clear
@@ -19,7 +29,7 @@ export function ShortcutField({ value, onChange, label }: { value: string | unde
   );
 }
 
-const CARD = "flex min-h-44 flex-col items-start rounded-card p-5 text-left transition-colors duration-[var(--dur-fast)] ease-fluent";
+const CARD = "flex min-h-44 w-full flex-col items-start rounded-card p-5 text-left transition-colors duration-[var(--dur-fast)] ease-fluent";
 
 /** A transform as a card: keycaps, name, what it does. Opens the editor. */
 export function TransformCard({ t, onOpen }: { t: Transform; onOpen: () => void }) {
@@ -29,7 +39,7 @@ export function TransformCard({ t, onOpen }: { t: Transform; onOpen: () => void 
         {t.shortcut ? <Chord chord={t.shortcut} /> : <span className="text-caption text-faint">No shortcut</span>}
         {t.builtin && (
           <span className="inline-flex items-center gap-1 text-caption text-faint">
-            <Lock size={12} strokeWidth={1.5} aria-hidden /> Built in
+            <Lock size={16} strokeWidth={1.5} aria-hidden /> Built in
           </span>
         )}
       </span>
@@ -75,6 +85,7 @@ export function TransformModal({ initial, onClose, onSaved, onDelete }: { initia
   const [shortcut, setShortcut] = useState(initial.shortcut);
   const [error, setError] = useState<string | null>(null);
   const [busy, setBusy] = useState(false);
+  const [recording, setRecording] = useState(false);
 
   const builtin = !!initial.builtin;
   const isNew = !initial.id;
@@ -102,6 +113,7 @@ export function TransformModal({ initial, onClose, onSaved, onDelete }: { initia
     <Modal
       isOpen
       onClose={onClose}
+      keyboardDismissDisabled={recording}
       title={isNew ? "Create a transform" : builtin ? initial.name : "Edit transform"}
       footer={
         <>
@@ -154,7 +166,7 @@ export function TransformModal({ initial, onClose, onSaved, onDelete }: { initia
         <div>
           <div className="mb-1.5 text-body-strong text-ink">Shortcut</div>
           <div className="flex items-center gap-3">
-            <ShortcutField value={shortcut} onChange={setShortcut} label={name || "New transform"} />
+            <ShortcutField value={shortcut} onChange={setShortcut} label={name || "New transform"} onRecordingChange={setRecording} />
             {!shortcut && <span className="text-caption text-muted">Optional. Select text anywhere and press it.</span>}
           </div>
         </div>

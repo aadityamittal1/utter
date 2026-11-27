@@ -106,13 +106,24 @@ export const CONTEXT_TABS: { id: ContextTab; label: string; categories: Category
 
 /** Headline for the banner above a category's style cards. */
 export const BANNER_TITLES: Record<Category, string> = {
-  personalChat: "This style applies in personal messengers",
-  workChat: "This style applies in work chat",
-  email: "This style applies in email",
-  aiPrompt: "This style applies when you prompt an AI",
-  code: "This style applies in editors and terminals",
-  document: "This style applies in documents",
-  other: "This style applies everywhere else",
+  personalChat: "How you sound with friends",
+  workChat: "How you sound at work",
+  email: "How you sound in email",
+  aiPrompt: "How you sound with an AI",
+  code: "How you sound in code tools",
+  document: "How you sound in documents",
+  other: "How you sound everywhere else",
+};
+
+/** Completes "Always enhance in …" for each category. */
+export const ENHANCE_WHERE: Record<Category, string> = {
+  personalChat: "personal messages",
+  workChat: "work messages",
+  email: "email",
+  aiPrompt: "AI prompts",
+  code: "code tools",
+  document: "documents",
+  other: "other apps",
 };
 
 /** Example apps shown as plain text chips. The match itself is by app, window title and your rules. */
