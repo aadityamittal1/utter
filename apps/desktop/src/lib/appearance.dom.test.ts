@@ -84,4 +84,25 @@ describe("applyAppearance (DOM)", () => {
     expect(el.dataset.theme).toBe("dark");
     expect(el.style.getPropertyValue("--ember")).toBe("#0078d4");
   });
+
+  it("themeOnly (pill) applies the theme but ignores accent and text scale, also on storage events", async () => {
+    mockMedia({ dark: false, reduce: false });
+    const el = document.documentElement;
+    el.style.fontSize = "";
+    el.style.removeProperty("--ember");
+    localStorage.setItem("utter.textScale", "2");
+    localStorage.setItem("utter.accent", JSON.stringify(ACCENT));
+    localStorage.setItem("utter.accentSource", "windows");
+    localStorage.setItem("utter.theme", "light");
+    const a = await import("./appearance");
+    a.applyCachedAppearance({ themeOnly: true });
+    expect(el.dataset.theme).toBe("light");
+    expect(el.style.fontSize).toBe("");
+    expect(el.style.getPropertyValue("--ember")).toBe("");
+
+    localStorage.setItem("utter.theme", "dark");
+    window.dispatchEvent(new StorageEvent("storage", { key: "utter.theme" }));
+    expect(el.dataset.theme).toBe("dark");
+    expect(el.style.fontSize).toBe("");
+  });
 });

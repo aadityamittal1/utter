@@ -77,6 +77,8 @@ interface State {
 const state: State = { theme: "system", accentSource: "utter", accent: null, textScale: 1, backdrop: "solid" };
 let appliedAccentKeys: string[] = [];
 let listening = false;
+/** Pill window: theme only. No accent, no text scale. */
+let themeOnly = false;
 
 const hasDom = () => typeof document !== "undefined";
 const media = (q: string) => (typeof window !== "undefined" && typeof window.matchMedia === "function" ? window.matchMedia(q) : null);
@@ -92,6 +94,7 @@ function render() {
   el.dataset.reduceMotion = String(media("(prefers-reduced-motion: reduce)")?.matches ?? false);
   el.dataset.backdrop = state.backdrop;
 
+  if (themeOnly) return;
   for (const k of appliedAccentKeys) el.style.removeProperty(k);
   const vars = accentVars(state.accentSource, state.accent, resolved);
   appliedAccentKeys = vars ? Object.keys(vars) : [];
@@ -139,6 +142,7 @@ function loadCached() {
     if (t === "system" || t === "light" || t === "dark") state.theme = t;
     const a = localStorage.getItem(ACCENT_SOURCE_KEY);
     if (a === "utter" || a === "windows") state.accentSource = a;
+    if (themeOnly) return render();
     const ts = localStorage.getItem(TEXT_SCALE_KEY);
     if (ts !== null) state.textScale = clampTextScale(Number(ts));
     const acc = localStorage.getItem(ACCENT_KEY);
@@ -159,7 +163,8 @@ export function applyAppearance(next: { theme: ThemePref; accentSource?: AccentS
 }
 
 /** Apply the last known choice before first paint (no flash). */
-export function applyCachedAppearance(): void {
+export function applyCachedAppearance(opts: { themeOnly?: boolean } = {}): void {
+  themeOnly = opts.themeOnly === true;
   listen();
   loadCached();
 }

@@ -7,7 +7,7 @@ import { applyCachedAppearance } from "./lib/appearance";
 // The pill window is transparent; only the capsule is painted. global.css keeps
 // html[data-window="pill"] transparent even after HeroUI styles load.
 document.documentElement.dataset.window = "pill";
-applyCachedAppearance(); // theme only
+applyCachedAppearance({ themeOnly: true });
 document.documentElement.style.background = "transparent";
 document.body.style.background = "transparent";
 

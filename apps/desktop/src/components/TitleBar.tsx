@@ -1,4 +1,4 @@
-import type { ReactNode } from "react";
+import { useReducer, type ReactNode } from "react";
 import { Copy, Minus, Moon, PanelLeft, Square, Sun, X } from "lucide-react";
 import { useNav, useSettings } from "../lib/store";
 import { applyAppearance } from "../lib/appearance";
@@ -34,13 +34,17 @@ export function TitleBar({ showSidebarToggle = true }: { showSidebarToggle?: boo
   const update = useSettings((s) => s.update);
   const resolved = useResolvedTheme();
   const maximized = useMaximized();
-  const dark = resolved === "dark";
+  const [, rerender] = useReducer((n: number) => n + 1, 0);
+  // Without loaded settings (error screen) the theme in effect is whatever is on <html>.
+  const dark = settings ? resolved === "dark" : document.documentElement.dataset.theme === "dark";
 
   const toggleTheme = () => {
     const theme = dark ? "light" : "dark";
-    // Without loaded settings (error screen) there is nothing to persist: apply directly.
     if (settings) void update({ theme });
-    else applyAppearance({ theme });
+    else {
+      applyAppearance({ theme }); // nothing to persist yet: apply directly
+      rerender();
+    }
   };
 
   return (
@@ -53,7 +57,7 @@ export function TitleBar({ showSidebarToggle = true }: { showSidebarToggle?: boo
         )}
       </div>
       <div data-tauri-drag-region className="flex items-start">
-        <div className="flex h-[48px] items-center pr-2">
+        <div data-tauri-drag-region className="flex h-[48px] items-center pr-2">
           <IconButton label={dark ? "Switch to light theme" : "Switch to dark theme"} onClick={toggleTheme} className="[&_svg]:size-5">
             {dark ? <Sun strokeWidth={1.5} /> : <Moon strokeWidth={1.5} />}
           </IconButton>
