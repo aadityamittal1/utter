@@ -75,7 +75,7 @@ export interface PillViewProps {
   onAction?: (a: PillAction) => void;
   onMenu?: (open: boolean) => void;
   /** Pointer activity inside the open menu: keeps it from auto-closing. */
-  onMenuActivity?: () => void;
+  onMenuActivity?: (kind: "move" | "down") => void;
 }
 
 /** Presentational pill. All state comes in through props, so a harness can drive it. */
@@ -105,14 +105,14 @@ export function PillView({ state, levelsRef, menuOpen = false, hover = false, ch
   const [tooWide, setTooWide] = useState<string | undefined>(undefined);
   useLayoutEffect(() => {
     const el = hoverRef.current;
-    if (view !== "hover" || !keys || !el) return;
+    if (view !== "hover" || !el || !hoverKeys(chord)) return;
     // Natural width, measured independent of the animating capsule.
     const prev = el.style.width;
     el.style.width = "max-content";
     const natural = el.getBoundingClientRect().width;
     el.style.width = prev;
     if (natural > size.w - 2) setTooWide(chord);
-  }, [view, keys, chord, size.w]);
+  }, [view, chord, size.w]);
   const shownKeys = keys && tooWide !== chord ? keys : null;
 
   // Ignore double-clicks and clicks right after the state changes.
@@ -148,13 +148,13 @@ export function PillView({ state, levelsRef, menuOpen = false, hover = false, ch
       style={style}
       role={isButton ? "button" : "group"}
       tabIndex={isButton ? 0 : undefined}
-      aria-label={click === "start" ? "Start dictating" : click === "toggle" ? "Stop and insert" : "Utter dictation"}
+      aria-label={click === "start" ? "Start dictating" : click === "toggle" && view !== "locked" ? "Stop and insert" : view === "locked" ? "Recording, hands-free" : "Utter dictation"}
       onClick={click ? onBodyClick : undefined}
       onKeyDown={onKeyDown}
       onPointerDown={(e) => e.stopPropagation()}
     >
       {view === "menu" ? (
-        <div className="pill-menu" role="menu" aria-label="Pill options" key="menu" onPointerMove={onMenuActivity} onPointerDown={onMenuActivity}>
+        <div className="pill-menu" role="menu" aria-label="Pill options" key="menu" onPointerMove={() => onMenuActivity?.("move")} onPointerDown={() => onMenuActivity?.("down")}>
           <button className="pill-menu-item" role="menuitem" onClick={() => { act("hide1h")(); onMenu?.(false); }}>
             Hide for 1 hour
           </button>
@@ -341,13 +341,16 @@ export function Pill() {
   useEffect(() => {
     menuPinged.current = false;
   }, [menuOpen]);
-  const bumpMenu = useCallback(() => {
+  const bumpMenu = useCallback(
+    (kind: "move" | "down") => {
     setMenuActivity((n) => n + 1);
-    if (!menuPinged.current) {
+    if (kind === "move" && !menuPinged.current) {
       menuPinged.current = true;
       sendLatch("menuOpen");
     }
-  }, [sendLatch]);
+  },
+    [sendLatch],
+  );
 
   let shownState = state;
   if (live) shownState = { ...state, elapsedMs: effectiveElapsed(state.elapsedMs, localMs) };

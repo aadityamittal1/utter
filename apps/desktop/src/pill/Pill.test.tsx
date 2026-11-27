@@ -76,6 +76,7 @@ describe("pill markup", () => {
     const l = html(locked);
     expect(l).toContain("role=\"group\"");
     expect(l).not.toContain("tabindex");
+    expect(l).toContain("Recording, hands-free");
   });
   it("shows the remaining time from 19 minutes", () => {
     expect(html({ ...listening, elapsedMs: 19 * 60_000 + 18_000 })).toContain("0:42 left");
@@ -129,6 +130,16 @@ describe("pill click routing", () => {
     mount(idle);
     act(() => capsule().dispatchEvent(new MouseEvent("click", { bubbles: true, detail: 2 })));
     expect(onAction).not.toHaveBeenCalled();
+  });
+  it("does not guard a click right after hovering the idle pill", () => {
+    let t = 1000;
+    const spy = vi.spyOn(performance, "now").mockImplementation(() => t);
+    mount(idle);
+    act(() => root.render(<PillView state={idle} hover levelsRef={{ current: [] }} onAction={onAction} />));
+    t = 1010;
+    click(capsule());
+    expect(onAction.mock.calls).toEqual([["start"]]);
+    spy.mockRestore();
   });
   it("ignores body clicks for 300 ms after the view changes", () => {
     let t = 1000;
@@ -224,6 +235,11 @@ describe("pill menu latch (container)", () => {
     move();
     move();
     expect(sent()).toEqual(["menuOpen", "menuOpen"]);
+  });
+  it("does not re-send menuOpen on pointerdown", () => {
+    rightClick();
+    act(() => host.querySelector(".pill-menu")!.dispatchEvent(new Event("pointerdown", { bubbles: true })));
+    expect(sent()).toEqual(["menuOpen"]);
   });
   it("ties the bottom padding to the Rust capsule margin", () => {
     expect(host.querySelector<HTMLElement>(".pill-root")!.style.paddingBottom).toBe("8px");
